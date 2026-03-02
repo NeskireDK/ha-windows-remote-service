@@ -157,7 +157,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         try
         {
-            Process.Start(new ProcessStartInfo($"http://localhost:{_port}/debug") { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo($"http://localhost:{_port}/api-explorer") { UseShellExecute = true });
         }
         catch (Exception ex)
         {

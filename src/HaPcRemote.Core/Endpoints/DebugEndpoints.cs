@@ -8,7 +8,7 @@ public static class DebugEndpoints
 {
     public static IEndpointRouteBuilder MapDebugEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/debug", (HttpContext context, IOptionsMonitor<PcRemoteOptions> options) =>
+        endpoints.MapGet("/api-explorer", (HttpContext context, IOptionsMonitor<PcRemoteOptions> options) =>
         {
             var remote = context.Connection.RemoteIpAddress;
             if (remote is not null && !IPAddress.IsLoopback(remote))

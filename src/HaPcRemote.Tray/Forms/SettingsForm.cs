@@ -4,6 +4,7 @@ using HaPcRemote.Service.Services;
 using HaPcRemote.Tray.Logging;
 using HaPcRemote.Tray.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace HaPcRemote.Tray.Forms;
 
@@ -35,11 +36,13 @@ internal sealed class SettingsForm : Form
             Font = new Font("Segoe UI", 9.5f),
         };
 
+        var port = services.GetRequiredService<IOptionsMonitor<PcRemoteOptions>>().CurrentValue.Port;
+
         _generalTab = new GeneralTab(services);
         _modesTab = new ModesTab(services);
         _gamesTab = new GamesTab(services);
         _powerTab = new PowerTab(services);
-        _logTab = new LogTab(logProvider);
+        _logTab = new LogTab(logProvider, port);
 
         _tabControl.TabPages.Add(_generalTab);
         _tabControl.TabPages.Add(_modesTab);

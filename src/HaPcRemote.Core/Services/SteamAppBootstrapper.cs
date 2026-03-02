@@ -19,9 +19,11 @@ public static class SteamAppBootstrapper
             return;
 
         var needsSteam = !currentOptions.Apps.ContainsKey("steam");
-        var needsBigPicture = !currentOptions.Apps.ContainsKey("steam-bigpicture");
 
-        if (!needsSteam && !needsBigPicture)
+        // Always overwrite steam-bigpicture — it's a fixed URI, not user-configurable,
+        // and existing installs may have the old steam.exe -bigpicture entry.
+        if (!needsSteam && currentOptions.Apps.TryGetValue("steam-bigpicture", out var existing)
+            && existing.ExePath.StartsWith("steam://", StringComparison.OrdinalIgnoreCase))
             return;
 
         var steamPath = platform.GetSteamPath();
@@ -46,7 +48,6 @@ public static class SteamAppBootstrapper
             logger.LogInformation("Auto-registered Steam app entry: {ExePath}", exePath);
         }
 
-        if (needsBigPicture)
         {
             writer.SaveApp("steam-bigpicture", new AppDefinitionOptions
             {

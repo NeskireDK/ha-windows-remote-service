@@ -537,7 +537,7 @@ public class SteamService(
     {
         // For non-Steam shortcuts, use unsigned representation for filenames
         var fileId = IsShortcutAppId(appId) ? ((uint)appId).ToString() : appId.ToString();
-        logger?.LogDebug("Artwork: lookup appId={AppId} fileId={FileId} isShortcut={IsShortcut}",
+        logger?.LogInformation("Artwork: lookup appId={AppId} fileId={FileId} isShortcut={IsShortcut}",
             appId, fileId, IsShortcutAppId(appId));
 
         // Priority 1: Custom grid art (user-set posters)
@@ -555,16 +555,16 @@ public class SteamService(
                         return path;
                     }
                 }
-                logger?.LogDebug("Artwork: not found in custom grid {GridDir}", gridDir);
+                logger?.LogInformation("Artwork: not found in custom grid {GridDir}", gridDir);
             }
             else
             {
-                logger?.LogDebug("Artwork: custom grid dir missing {GridDir}", gridDir);
+                logger?.LogWarning("Artwork: custom grid dir missing {GridDir}", gridDir);
             }
         }
         else
         {
-            logger?.LogDebug("Artwork: no steamUserId, skipping custom grid lookup");
+            logger?.LogInformation("Artwork: no steamUserId, skipping custom grid lookup");
         }
 
         // Priority 2: Steam CDN library cache
@@ -580,11 +580,11 @@ public class SteamService(
                     return path;
                 }
             }
-            logger?.LogDebug("Artwork: not found in library cache {CacheDir}", cacheDir);
+            logger?.LogInformation("Artwork: not found in library cache {CacheDir}", cacheDir);
         }
         else
         {
-            logger?.LogDebug("Artwork: library cache dir missing {CacheDir}", cacheDir);
+            logger?.LogWarning("Artwork: library cache dir missing {CacheDir}", cacheDir);
         }
 
         return null;
