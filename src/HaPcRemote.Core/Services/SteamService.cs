@@ -10,6 +10,7 @@ public class SteamService(
     ISteamPlatform platform,
     IModeService modeService,
     IOptionsMonitor<PcRemoteOptions> options,
+    IHttpClientFactory httpClientFactory,
     ILogger<SteamService> logger) : ISteamService
 {
     private List<SteamGame>? _cachedGames;
@@ -183,7 +184,7 @@ public class SteamService(
         return Task.CompletedTask;
     }
 
-    public string? GetArtworkPath(int appId)
+    public async Task<string?> GetArtworkPathAsync(int appId)
     {
         var steamPath = platform.GetSteamPath();
         if (steamPath == null)
@@ -194,12 +195,48 @@ public class SteamService(
 
         var gameName = _cachedGames?.FirstOrDefault(g => g.AppId == appId)?.Name;
         var result = FindArtworkPath(steamPath, platform.GetSteamUserId(), appId, logger);
+
+        if (result == null && !IsShortcutAppId(appId))
+        {
+            result = await TryDownloadFromCdnAsync(steamPath, appId, gameName);
+        }
+
         if (result == null)
             logger.LogError("Artwork: no cover found for appId={AppId} game={GameName}", appId, gameName ?? "unknown");
         else
             logger.LogDebug("Artwork: serving {Path} ({Size} KB) for appId={AppId} game={GameName}",
                 result, new FileInfo(result).Length / 1024, appId, gameName ?? "unknown");
         return result;
+    }
+
+    private async Task<string?> TryDownloadFromCdnAsync(string steamPath, int appId, string? gameName)
+    {
+        var cdnUrl = $"https://cdn.akamai.steamstatic.com/steam/apps/{appId}/library_600x900_2x.jpg";
+        var cacheDir = Path.Combine(steamPath, "appcache", "librarycache");
+        var destPath = Path.Combine(cacheDir, $"{appId}_library_600x900.jpg");
+
+        logger.LogWarning(
+            "Artwork: [CDN FALLBACK] local cache empty for appId={AppId} game={GameName} — downloading {Url}",
+            appId, gameName ?? "unknown", cdnUrl);
+
+        try
+        {
+            Directory.CreateDirectory(cacheDir);
+            var http = httpClientFactory.CreateClient();
+            var bytes = await http.GetByteArrayAsync(cdnUrl);
+            await File.WriteAllBytesAsync(destPath, bytes);
+            logger.LogWarning(
+                "Artwork: [CDN FALLBACK] saved {Size} KB to {Path} for appId={AppId}",
+                bytes.Length / 1024, destPath, appId);
+            return destPath;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex,
+                "Artwork: [CDN FALLBACK] failed for appId={AppId} game={GameName} url={Url}",
+                appId, gameName ?? "unknown", cdnUrl);
+            return null;
+        }
     }
 
     public SteamBindings GetBindings()
@@ -532,6 +569,8 @@ public class SteamService(
     /// Finds the artwork file for a given appId. Priority:
     /// 1. Custom grid art: userdata/{steamid}/config/grid/{appId}p.{ext}
     /// 2. Library cache: appcache/librarycache/{appId}_library_600x900.{ext}
+    /// 3. Library cache fallbacks: _library_hero, _header, _logo
+    /// For official games only (appId > 0), callers may try CDN after this returns null.
     /// </summary>
     internal static string? FindArtworkPath(string steamPath, string? steamUserId, int appId, ILogger? logger = null)
     {
@@ -567,20 +606,26 @@ public class SteamService(
             logger?.LogInformation("Artwork: no steamUserId, skipping custom grid lookup");
         }
 
-        // Priority 2: Steam CDN library cache
+        // Priority 2: Steam local library cache (multiple filename variants)
         var cacheDir = Path.Combine(steamPath, "appcache", "librarycache");
         if (Directory.Exists(cacheDir))
         {
-            foreach (var ext in ArtworkExtensions)
+            // Steam caches artwork with these suffixes — try most useful first
+            string[] libraryCacheSuffixes = ["_library_600x900", "_library_hero", "_header", "_logo"];
+            foreach (var suffix in libraryCacheSuffixes)
             {
-                var path = Path.Combine(cacheDir, $"{fileId}_library_600x900.{ext}");
-                if (File.Exists(path))
+                foreach (var ext in ArtworkExtensions)
                 {
-                    logger?.LogDebug("Artwork: found in library cache {Path} ({Size} KB)", path, new FileInfo(path).Length / 1024);
-                    return path;
+                    var path = Path.Combine(cacheDir, $"{fileId}{suffix}.{ext}");
+                    if (File.Exists(path))
+                    {
+                        logger?.LogDebug("Artwork: found in library cache {Path} ({Size} KB)", path, new FileInfo(path).Length / 1024);
+                        return path;
+                    }
                 }
             }
-            logger?.LogInformation("Artwork: not found in library cache {CacheDir}", cacheDir);
+            logger?.LogInformation("Artwork: not found in library cache {CacheDir} (checked {Count} suffix variants)",
+                cacheDir, libraryCacheSuffixes.Length);
         }
         else
         {

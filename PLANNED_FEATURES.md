@@ -33,10 +33,10 @@ Documented bugs that undermine trust in the integration.
   reports the game running, so the 30 s window only starts after the service confirms
   the game is gone. *(integration)*
 
-- [x] **Artwork not loading** — Granular path logging added to the artwork endpoint: logs
-  file size (KB), game name, and resolved path at each fallback step. Warning on missing
-  file, Error on unexpected exceptions. Log level differentiation makes failures immediately
-  visible without noise on the happy path. *(service)*
+- [x] **Artwork not loading** — Granular path logging added (v1.3.4). CDN fallback added
+  (v1.3.5): if all local paths miss, official games download from cdn.akamai.steamstatic.com
+  and cache to librarycache. Also checks _library_hero, _header, _logo variants before
+  falling back to CDN. CDN use logged at Warning with [CDN FALLBACK] prefix. *(service)*
 
 - [x] **Steam Big Picture launch idempotent** — Launching `steam-bigpicture` when Steam is
   already running does nothing. Fixed post-v1.3.2: launch via `steam://open/bigpicture` URI

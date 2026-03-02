@@ -53,6 +53,7 @@ public class EndpointTestBase : IAsyncLifetime
         builder.Services.AddSingleton(ConfigWriter);
 
         // Real services that delegate to fakes
+        builder.Services.AddHttpClient();
         builder.Services.AddSingleton<AppService>();
         builder.Services.AddSingleton<IModeService, ModeService>();
         builder.Services.AddSingleton<ISteamService, SteamService>();

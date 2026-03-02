@@ -80,6 +80,7 @@ internal static class TrayWebHost
         });
 
         // Services — direct, no IPC (tray runs in user session)
+        builder.Services.AddHttpClient();
         builder.Services.AddSingleton<ICliRunner, CliRunner>();
         builder.Services.AddSingleton<IAppLauncher, DirectAppLauncher>();
         builder.Services.AddSingleton<AppService>();
