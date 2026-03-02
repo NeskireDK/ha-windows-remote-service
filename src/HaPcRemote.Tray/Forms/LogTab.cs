@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using HaPcRemote.Tray.Logging;
 using Microsoft.Extensions.Logging;
 
@@ -8,7 +9,7 @@ internal sealed class LogTab : TabPage
     private readonly InMemoryLogProvider _provider;
     private readonly RichTextBox _logBox;
 
-    public LogTab(InMemoryLogProvider provider)
+    public LogTab(InMemoryLogProvider provider, int port)
     {
         _provider = provider;
 
@@ -32,8 +33,16 @@ internal sealed class LogTab : TabPage
         var clearButton = TabFooter.MakeButton("Clear");
         clearButton.Click += (_, _) => _logBox.Clear();
 
+        var debugButton = TabFooter.MakeButton("API Explorer");
+        debugButton.Click += (_, _) =>
+        {
+            try { Process.Start(new ProcessStartInfo($"http://localhost:{port}/api-explorer") { UseShellExecute = true }); }
+            catch { /* best effort */ }
+        };
+
         var footer = new TabFooter();
         footer.Add(clearButton);
+        footer.Add(debugButton);
 
         Controls.Add(_logBox);
         Controls.Add(footer);
