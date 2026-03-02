@@ -79,6 +79,7 @@ builder.WebHost.ConfigureKestrel(options =>
 });
 
 // Services — Linux-native implementations
+builder.Services.AddHttpClient();
 builder.Services.AddSingleton<ICliRunner, CliRunner>();
 builder.Services.AddSingleton<IAppLauncher, DirectAppLauncher>();
 builder.Services.AddSingleton<AppService>();
