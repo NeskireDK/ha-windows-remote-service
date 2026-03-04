@@ -634,4 +634,85 @@ public class SteamService(
 
         return null;
     }
+
+    /// <summary>
+    /// Returns diagnostic info about all artwork paths checked for a given appId.
+    /// Does not download from CDN — purely local file checks.
+    /// </summary>
+    internal static ArtworkDiagnostics GetArtworkDiagnostics(string steamPath, string? steamUserId, int appId, string gameName)
+    {
+        var fileId = IsShortcutAppId(appId) ? ((uint)appId).ToString() : appId.ToString();
+        var paths = new List<ArtworkPathCheck>();
+        string? resolvedPath = null;
+
+        // Priority 1: Custom grid art
+        if (steamUserId != null)
+        {
+            var gridDir = Path.Combine(steamPath, "userdata", steamUserId, "config", "grid");
+            foreach (var ext in ArtworkExtensions)
+            {
+                var path = Path.Combine(gridDir, $"{fileId}p.{ext}");
+                var exists = File.Exists(path);
+                long? size = exists ? new FileInfo(path).Length : null;
+                paths.Add(new ArtworkPathCheck { Path = path, Category = "Custom Grid", Exists = exists, SizeBytes = size });
+                if (exists && resolvedPath == null) resolvedPath = path;
+            }
+        }
+
+        // Priority 2: Library cache
+        var cacheDir = Path.Combine(steamPath, "appcache", "librarycache");
+        string[] libraryCacheSuffixes = ["_library_600x900", "_library_hero", "_header", "_logo"];
+        foreach (var suffix in libraryCacheSuffixes)
+        {
+            foreach (var ext in ArtworkExtensions)
+            {
+                var path = Path.Combine(cacheDir, $"{fileId}{suffix}.{ext}");
+                var exists = File.Exists(path);
+                long? size = exists ? new FileInfo(path).Length : null;
+                paths.Add(new ArtworkPathCheck { Path = path, Category = $"Library Cache ({suffix})", Exists = exists, SizeBytes = size });
+                if (exists && resolvedPath == null) resolvedPath = path;
+            }
+        }
+
+        var cdnUrl = IsShortcutAppId(appId)
+            ? ""
+            : $"https://cdn.akamai.steamstatic.com/steam/apps/{appId}/library_600x900_2x.jpg";
+
+        return new ArtworkDiagnostics
+        {
+            AppId = appId,
+            FileId = fileId,
+            GameName = gameName,
+            IsShortcut = IsShortcutAppId(appId),
+            ResolvedPath = resolvedPath,
+            CdnUrl = cdnUrl,
+            PathsChecked = paths
+        };
+    }
+
+    public async Task<ArtworkDiagnostics?> GetArtworkDiagnosticsAsync(int appId)
+    {
+        var steamPath = platform.GetSteamPath();
+        if (steamPath == null) return null;
+
+        // Warm cache if needed
+        if (_cachedGames == null || _cachedGames.Count == 0)
+        {
+            try { await GetGamesAsync(); }
+            catch (InvalidOperationException) { /* no Steam */ }
+        }
+
+        var gameName = _cachedGames?.FirstOrDefault(g => g.AppId == appId)?.Name ?? $"Unknown ({appId})";
+        return GetArtworkDiagnostics(steamPath, platform.GetSteamUserId(), appId, gameName);
+    }
+
+    public async Task<List<ArtworkDiagnostics>> GetAllArtworkDiagnosticsAsync()
+    {
+        var games = await GetGamesAsync();
+        var steamPath = platform.GetSteamPath();
+        if (steamPath == null) return [];
+
+        var steamUserId = platform.GetSteamUserId();
+        return games.Select(g => GetArtworkDiagnostics(steamPath, steamUserId, g.AppId, g.Name)).ToList();
+    }
 }

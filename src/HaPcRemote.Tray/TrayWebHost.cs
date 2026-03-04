@@ -93,6 +93,7 @@ internal static class TrayWebHost
         builder.Services.AddSingleton<IIdleService, WindowsIdleService>();
         builder.Services.AddSingleton<ISteamPlatform, WindowsSteamPlatform>();
         builder.Services.AddSingleton<ISteamService, SteamService>();
+        builder.Services.AddSingleton<IUpdateService, UpdateService>();
         builder.Services.AddSingleton<IConfigurationWriter>(
             new ConfigurationWriter(writableConfigPath));
 
@@ -101,6 +102,7 @@ internal static class TrayWebHost
         // On subsequent builds (after a restart) the same instance is passed in so the delegate persists.
         var restart = restartService ?? new KestrelRestartService();
         builder.Services.AddSingleton(restart);
+        builder.Services.AddSingleton<IRestartService, TrayRestartService>();
 
         var app = builder.Build();
 
@@ -143,6 +145,7 @@ internal static class TrayWebHost
         app.MapAudioEndpoints();
         app.MapMonitorEndpoints();
         app.MapSteamEndpoints();
+        app.MapArtworkDebugEndpoints();
         app.MapPowerEndpoints();
 
         return app;
