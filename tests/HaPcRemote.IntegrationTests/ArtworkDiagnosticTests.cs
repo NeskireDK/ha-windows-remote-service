@@ -335,6 +335,124 @@ public class ArtworkDiagnosticTests : IntegrationTestBase
 
     [Fact]
     [Trait("Category", "ReadOnly")]
+    public async Task Diagnostics_Bloodborne_CustomGridArtworkFound()
+    {
+        // Bloodborne is a non-Steam shortcut with custom artwork set in Steam UI
+        const int bloodborneAppId = -959860145;
+
+        var response = await GetRawAsync($"/api/steam/artwork/{bloodborneAppId}/diagnostics");
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            _output.WriteLine("Diagnostics endpoint not available or Bloodborne not in game list — skipping");
+            return;
+        }
+
+        response.EnsureSuccessStatusCode();
+        var result = await DeserializeAsync<ApiResponse<ArtworkDiagnostics>>(response);
+        var diag = result?.Data;
+
+        if (diag == null)
+        {
+            _output.WriteLine("No diagnostics data returned for Bloodborne — skipping");
+            return;
+        }
+
+        _output.WriteLine($"Bloodborne diagnostics:");
+        _output.WriteLine($"  AppId: {diag.AppId}");
+        _output.WriteLine($"  FileId: {diag.FileId}");
+        _output.WriteLine($"  IsShortcut: {diag.IsShortcut}");
+        _output.WriteLine($"  ResolvedPath: {diag.ResolvedPath ?? "(none)"}");
+        _output.WriteLine($"  CdnUrl: {diag.CdnUrl}");
+        _output.WriteLine($"  Paths checked ({diag.PathsChecked.Count}):");
+
+        foreach (var path in diag.PathsChecked)
+        {
+            var size = path.SizeBytes.HasValue ? $"{path.SizeBytes / 1024}KB" : "n/a";
+            var marker = path.Exists ? "EXISTS" : "missing";
+            _output.WriteLine($"    [{marker}] [{path.Category}] {path.Path} ({size})");
+        }
+
+        diag.IsShortcut.ShouldBeTrue("Bloodborne should be detected as a non-Steam shortcut");
+        diag.FileId.ShouldBe(unchecked((uint)bloodborneAppId).ToString(),
+            "FileId should be unsigned representation of negative appId");
+
+        // Bloodborne has 5 custom images set in Steam UI — at least one grid path should exist
+        var existingPaths = diag.PathsChecked.Where(p => p.Exists).ToList();
+        _output.WriteLine($"\n  Found {existingPaths.Count} existing file(s)");
+
+        existingPaths.ShouldNotBeEmpty(
+            $"Bloodborne has custom artwork set in Steam UI but no paths found. " +
+            $"Checked {diag.PathsChecked.Count} paths — all missing. " +
+            $"Custom grid art may use naming patterns not covered by FindArtworkPath.");
+    }
+
+    [Fact]
+    [Trait("Category", "ReadOnly")]
+    public async Task Diagnostics_Bloodborne_ArtworkEndpointServesImage()
+    {
+        const int bloodborneAppId = -959860145;
+
+        var response = await GetRawAsync($"/api/steam/artwork/{bloodborneAppId}");
+        _output.WriteLine($"Artwork endpoint for Bloodborne: {(int)response.StatusCode} {response.StatusCode}");
+
+        if (response.StatusCode == HttpStatusCode.OK)
+        {
+            var contentType = response.Content.Headers.ContentType?.MediaType ?? "unknown";
+            var body = await response.Content.ReadAsByteArrayAsync();
+            _output.WriteLine($"  Content-Type: {contentType}, Size: {body.Length / 1024}KB");
+            contentType.ShouldStartWith("image/");
+            body.Length.ShouldBeGreaterThan(0);
+        }
+        else
+        {
+            _output.WriteLine("  Bloodborne artwork NOT served — custom grid art not found by service");
+            // This test documents the bug — it will pass once FindArtworkPath is fixed
+            response.StatusCode.ShouldBe(HttpStatusCode.OK,
+                "Bloodborne has custom artwork in Steam but the service returns 404. " +
+                "FindArtworkPath needs to check more grid naming patterns.");
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "ReadOnly")]
+    public async Task Diagnostics_PerGame_ReturnsDetailedPaths()
+    {
+        var games = await GetGamesOrNull();
+        if (games == null)
+        {
+            _output.WriteLine("Steam not available — skipping");
+            return;
+        }
+
+        // Test per-game diagnostics endpoint for first 3 games
+        foreach (var game in games.Take(3))
+        {
+            var response = await GetRawAsync($"/api/steam/artwork/{game.AppId}/diagnostics");
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                _output.WriteLine($"Per-game diagnostics not available — skipping");
+                return;
+            }
+
+            response.EnsureSuccessStatusCode();
+            var result = await DeserializeAsync<ApiResponse<ArtworkDiagnostics>>(response);
+            var diag = result?.Data;
+            diag.ShouldNotBeNull($"Diagnostics for {game.Name} returned null");
+
+            _output.WriteLine($"\n--- {diag.GameName} (appId={diag.AppId}, fileId={diag.FileId}) ---");
+            _output.WriteLine($"  Resolved: {diag.ResolvedPath ?? "(none)"}");
+
+            var existing = diag.PathsChecked.Where(p => p.Exists).ToList();
+            var missing = diag.PathsChecked.Where(p => !p.Exists).ToList();
+            _output.WriteLine($"  Paths: {existing.Count} exist, {missing.Count} missing");
+
+            foreach (var p in existing)
+                _output.WriteLine($"    [EXISTS] {p.Category}: {p.Path} ({p.SizeBytes / 1024}KB)");
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "ReadOnly")]
     public async Task Diagnostics_FileIdMatchesExpected()
     {
         var diagnostics = await GetDiagnosticsOrSkip();
@@ -349,7 +467,7 @@ public class ArtworkDiagnosticTests : IntegrationTestBase
         foreach (var game in diagnostics)
         {
             var expectedFileId = game.IsShortcut || game.AppId < 0
-                ? ((uint)game.AppId).ToString()
+                ? unchecked((uint)game.AppId).ToString()
                 : game.AppId.ToString();
 
             if (game.FileId != expectedFileId)
