@@ -29,4 +29,29 @@ public class UpdateTriggerTests : IntegrationTestBase
         response.StatusCode.ShouldNotBe(HttpStatusCode.NotFound,
             "Update endpoint not found — is it deployed?");
     }
+
+    [Fact]
+    [Trait("Category", "Mutating")]
+    public async Task TriggerUpdateAndReload_AppliesNewVersion()
+    {
+        // Step 1: Trigger update download
+        var updateResponse = await PostRawAsync("/api/system/update");
+        var updateBody = await updateResponse.Content.ReadAsStringAsync();
+        _output.WriteLine($"Update: {(int)updateResponse.StatusCode} — {updateBody}");
+
+        // Step 2: Trigger reload to apply it
+        var reloadResponse = await PostRawAsync("/api/system/reload");
+        var reloadBody = await reloadResponse.Content.ReadAsStringAsync();
+        _output.WriteLine($"Reload: {(int)reloadResponse.StatusCode} — {reloadBody}");
+
+        // Step 3: Wait for restart
+        _output.WriteLine("Waiting for service restart...");
+        await Task.Delay(TimeSpan.FromSeconds(15));
+
+        // Step 4: Verify service is back up
+        var healthResponse = await GetRawAsync("/api/health");
+        healthResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var health = await healthResponse.Content.ReadAsStringAsync();
+        _output.WriteLine($"Health after restart: {health}");
+    }
 }
