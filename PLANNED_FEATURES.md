@@ -348,6 +348,20 @@ config entry if missing — no manual setup required.
 
 ---
 
+## v1.3.6
+
+### Features
+
+- [x] **Artwork debug HTML endpoints** — `GET /api/steam/artwork/debug` shows all top-20 games with path resolution diagnostics and inline image previews. `GET /api/steam/artwork/{appId}/debug` shows per-game detail. Color-coded, localhost-only. *(service)*
+- [x] **Service reload endpoint** — `POST /api/system/reload` triggers graceful service restart. Tray does in-process Kestrel restart, Headless stops for systemd. *(service)*
+- [x] **Auto-update endpoint** — `POST /api/system/update` checks GitHub releases, downloads installer, runs silent update. NoOp on Linux. *(service)*
+
+### Refactors
+
+- [x] **HTML/CSS as embedded resources** — Inline HTML/CSS extracted to `.html`/`.css` files in `Views/` folder, loaded via `EmbeddedResourceHelper`. Endpoints build only dynamic content. *(service)*
+
+---
+
 ## Backlog
 
 ### 12. Auto-Sleep on Inactivity *(done in v1.3)*
