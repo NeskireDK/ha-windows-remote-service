@@ -32,6 +32,7 @@
     .method { font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 3px; text-transform: uppercase; min-width: 48px; text-align: center; }
     .method-get { background: var(--get); color: #fff; }
     .method-post { background: var(--post); color: #fff; }
+    .method-put { background: #f39c12; color: #fff; }
     .path { font-size: 0.9rem; font-family: monospace; flex: 1; }
     .desc { color: var(--text-muted); font-size: 0.8rem; }
     .ep-body { display: none; padding: 0 14px 12px; }
@@ -73,7 +74,11 @@
           { method: "POST", path: "/api/system/sleep", desc: "Put the PC to sleep" },
           { method: "GET", path: "/api/system/state", desc: "Full system state (audio, monitors, steam, modes, idle)" },
           { method: "GET", path: "/api/system/modes", desc: "List configured mode names" },
-          { method: "POST", path: "/api/system/mode/{modeName}", desc: "Apply a named mode", params: [{ name: "modeName", placeholder: "e.g. gaming", segment: true }] }
+          { method: "POST", path: "/api/system/mode/{modeName}", desc: "Apply a named mode", params: [{ name: "modeName", placeholder: "e.g. gaming", segment: true }] },
+          { method: "GET", path: "/api/system/power", desc: "Get auto-sleep configuration" },
+          { method: "PUT", path: "/api/system/power", desc: "Update auto-sleep config (body: { autoSleepMinutes: N })", body: true },
+          { method: "POST", path: "/api/system/reload", desc: "Graceful service restart" },
+          { method: "POST", path: "/api/system/update", desc: "Check and apply auto-update from GitHub" }
         ]
       },
       {
@@ -112,7 +117,22 @@
           { method: "GET", path: "/api/steam/games", desc: "List installed Steam games" },
           { method: "GET", path: "/api/steam/running", desc: "Currently running Steam game" },
           { method: "POST", path: "/api/steam/run/{appId}", desc: "Launch a Steam game by app ID", params: [{ name: "appId", placeholder: "e.g. 730", segment: true }] },
-          { method: "POST", path: "/api/steam/stop", desc: "Stop the running Steam game" }
+          { method: "POST", path: "/api/steam/stop", desc: "Stop the running Steam game" },
+          { method: "GET", path: "/api/steam/artwork/{appId}", desc: "Get game artwork image", params: [{ name: "appId", placeholder: "e.g. 730", segment: true }] },
+          { method: "GET", path: "/api/steam/artwork/diagnostics", desc: "JSON artwork diagnostics for all games" },
+          { method: "GET", path: "/api/steam/artwork/{appId}/diagnostics", desc: "JSON artwork diagnostics for one game", params: [{ name: "appId", placeholder: "e.g. 730", segment: true }] },
+          { method: "GET", path: "/api/steam/bindings", desc: "Get mode↔game bindings" },
+          { method: "PUT", path: "/api/steam/bindings", desc: "Save mode↔game bindings (body: JSON)", body: true }
+        ]
+      },
+      {
+        group: "Debug (localhost only)",
+        items: [
+          { method: "GET", path: "/api/steam/artwork/debug", desc: "HTML debug page — all games artwork status" },
+          { method: "GET", path: "/api/steam/artwork/{appId}/debug", desc: "HTML debug page — single game artwork diagnostics", params: [{ name: "appId", placeholder: "e.g. 730", segment: true }] },
+          { method: "GET", path: "/api/debug/logs", desc: "Recent service logs (query: ?lines=200&level=WRN&category=Steam)" },
+          { method: "GET", path: "/api/debug/logs?level=ERR", desc: "Error logs only" },
+          { method: "GET", path: "/api/debug/logs?category=SteamService&lines=50", desc: "Steam service logs" }
         ]
       }
     ];
@@ -137,7 +157,7 @@
         html += `<div class="group"><div class="group-title">${g.group}</div>`;
         for (const ep of g.items) {
           const id = `ep-${idx}`;
-          const mc = ep.method === 'GET' ? 'method-get' : 'method-post';
+          const mc = ep.method === 'GET' ? 'method-get' : ep.method === 'PUT' ? 'method-put' : 'method-post';
           html += `<div class="endpoint">`;
           html += `<div class="ep-header" onclick="toggle('${id}')">`;
           html += `<span class="method ${mc}">${ep.method}</span>`;
@@ -152,6 +172,12 @@
               html += `<input id="${id}-${p.name}" placeholder="${p.placeholder}" />`;
               html += `</div>`;
             }
+          }
+          if (ep.body) {
+            html += `<div class="param-row">`;
+            html += `<label>body</label>`;
+            html += `<input id="${id}-body" placeholder="JSON body" style="font-size:0.8rem" />`;
+            html += `</div>`;
           }
           html += `<div class="actions">`;
           html += `<button class="btn" id="${id}-btn" onclick="fire('${id}', ${idx})">Try it</button>`;
@@ -205,10 +231,18 @@
       resultEl.textContent = 'Loading...';
 
       try {
-        const resp = await fetch(url, {
+        const opts = {
           method: ep.method,
           headers: { 'X-Api-Key': API_KEY }
-        });
+        };
+        if (ep.body) {
+          const bodyEl = document.getElementById(`${id}-body`);
+          if (bodyEl && bodyEl.value.trim()) {
+            opts.headers['Content-Type'] = 'application/json';
+            opts.body = bodyEl.value.trim();
+          }
+        }
+        const resp = await fetch(url, opts);
         const text = await resp.text();
         let display;
         try { display = JSON.stringify(JSON.parse(text), null, 2); }

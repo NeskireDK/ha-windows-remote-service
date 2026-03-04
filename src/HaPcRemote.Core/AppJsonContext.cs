@@ -42,6 +42,11 @@ namespace HaPcRemote.Service;
 [JsonSerializable(typeof(ApiResponse<PowerConfig>))]
 [JsonSerializable(typeof(UpdateResult))]
 [JsonSerializable(typeof(ApiResponse<UpdateResult>))]
+[JsonSerializable(typeof(ArtworkDiagnostics))]
+[JsonSerializable(typeof(ApiResponse<ArtworkDiagnostics>))]
+[JsonSerializable(typeof(List<ArtworkDiagnostics>))]
+[JsonSerializable(typeof(ApiResponse<List<ArtworkDiagnostics>>))]
+[JsonSerializable(typeof(ArtworkPathCheck))]
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
