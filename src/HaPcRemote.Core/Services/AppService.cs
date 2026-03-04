@@ -5,8 +5,13 @@ using Microsoft.Extensions.Options;
 
 namespace HaPcRemote.Service.Services;
 
-public class AppService(IOptionsMonitor<PcRemoteOptions> options, IAppLauncher appLauncher)
+public class AppService(
+    IOptionsMonitor<PcRemoteOptions> options,
+    IAppLauncher appLauncher,
+    IBigPictureTracker bigPictureTracker)
 {
+    internal const string BigPictureKey = "steam-bigpicture";
+
     public Task<List<AppInfo>> GetAllStatusesAsync()
     {
         var apps = options.CurrentValue.Apps;
@@ -21,7 +26,9 @@ public class AppService(IOptionsMonitor<PcRemoteOptions> options, IAppLauncher a
         {
             Key = kvp.Key,
             DisplayName = kvp.Value.DisplayName,
-            IsRunning = runningProcesses.Contains(kvp.Value.ProcessName)
+            IsRunning = IsBigPicture(kvp.Key)
+                ? bigPictureTracker.IsRunning
+                : runningProcesses.Contains(kvp.Value.ProcessName)
         }).ToList();
 
         return Task.FromResult(result);
@@ -31,11 +38,22 @@ public class AppService(IOptionsMonitor<PcRemoteOptions> options, IAppLauncher a
     {
         var definition = GetDefinition(appKey);
         await appLauncher.LaunchAsync(definition.ExePath, definition.Arguments, definition.UseShellExecute);
+
+        if (IsBigPicture(appKey))
+            bigPictureTracker.MarkStarted();
     }
 
     public Task KillAsync(string appKey)
     {
         var definition = GetDefinition(appKey);
+
+        if (IsBigPicture(appKey))
+        {
+            bigPictureTracker.MarkStopped();
+            // Don't kill the steam process — just exit Big Picture mode.
+            // Killing steam.exe would close Steam entirely.
+            return Task.CompletedTask;
+        }
 
         var processes = Process.GetProcessesByName(definition.ProcessName);
         foreach (var process in processes)
@@ -55,7 +73,9 @@ public class AppService(IOptionsMonitor<PcRemoteOptions> options, IAppLauncher a
         {
             Key = appKey,
             DisplayName = definition.DisplayName,
-            IsRunning = IsProcessRunning(definition.ProcessName)
+            IsRunning = IsBigPicture(appKey)
+                ? bigPictureTracker.IsRunning
+                : IsProcessRunning(definition.ProcessName)
         };
 
         return Task.FromResult(info);
@@ -69,6 +89,9 @@ public class AppService(IOptionsMonitor<PcRemoteOptions> options, IAppLauncher a
 
         return definition;
     }
+
+    private static bool IsBigPicture(string appKey) =>
+        string.Equals(appKey, BigPictureKey, StringComparison.Ordinal);
 
     private static bool IsProcessRunning(string processName)
     {
