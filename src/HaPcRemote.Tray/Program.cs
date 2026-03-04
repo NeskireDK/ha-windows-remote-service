@@ -6,6 +6,23 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
+        // Microsoft.NET.Sdk.Web may override [STAThread]. If the current thread
+        // is not STA, re-launch on an explicit STA thread so WinForms, COM, OLE,
+        // clipboard, and drag-drop all work correctly.
+        if (Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
+        {
+            Thread staThread = new(RunApplication) { Name = "WinForms-STA" };
+            staThread.SetApartmentState(ApartmentState.STA);
+            staThread.Start();
+            staThread.Join();
+            return;
+        }
+
+        RunApplication();
+    }
+
+    private static void RunApplication()
+    {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.SetHighDpiMode(HighDpiMode.SystemAware);
