@@ -68,6 +68,28 @@ public static class SteamEndpoints
             return Results.File(path, contentType);
         });
 
+        group.MapGet("/artwork/diagnostics", async (ISteamService steamService) =>
+        {
+            var diagnostics = await steamService.GetAllArtworkDiagnosticsAsync();
+            return Results.Json(
+                ApiResponse.Ok(diagnostics),
+                AppJsonContext.Default.ApiResponseListArtworkDiagnostics);
+        });
+
+        group.MapGet("/artwork/{appId:int}/diagnostics", async (int appId, ISteamService steamService) =>
+        {
+            var diag = await steamService.GetArtworkDiagnosticsAsync(appId);
+            if (diag == null)
+                return Results.Json(
+                    ApiResponse.Fail("Steam not available"),
+                    AppJsonContext.Default.ApiResponse,
+                    statusCode: 503);
+
+            return Results.Json(
+                ApiResponse.Ok(diag),
+                AppJsonContext.Default.ApiResponseArtworkDiagnostics);
+        });
+
         group.MapGet("/bindings", (ISteamService steamService) =>
         {
             var bindings = steamService.GetBindings();
