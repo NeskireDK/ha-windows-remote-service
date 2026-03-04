@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="api-key" content="__API_KEY_PLACEHOLDER__">
+  <title>HA PC Remote — API Explorer</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --surface: #16213e;
+      --border: #0f3460;
+      --accent: #e94560;
+      --accent-hover: #ff6b81;
+      --text: #eee;
+      --text-muted: #999;
+      --success: #2ecc71;
+      --error: #e74c3c;
+      --get: #3498db;
+      --post: #e94560;
+      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); padding: 24px; max-width: 960px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; margin-bottom: 4px; }
+    .subtitle { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 24px; }
+    .group { margin-bottom: 28px; }
+    .group-title { font-size: 1.1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 12px; }
+    .endpoint { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px; overflow: hidden; }
+    .ep-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; user-select: none; }
+    .ep-header:hover { background: rgba(255,255,255,0.03); }
+    .method { font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 3px; text-transform: uppercase; min-width: 48px; text-align: center; }
+    .method-get { background: var(--get); color: #fff; }
+    .method-post { background: var(--post); color: #fff; }
+    .path { font-size: 0.9rem; font-family: monospace; flex: 1; }
+    .desc { color: var(--text-muted); font-size: 0.8rem; }
+    .ep-body { display: none; padding: 0 14px 12px; }
+    .ep-body.open { display: block; }
+    .param-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+    .param-row label { font-size: 0.8rem; color: var(--text-muted); min-width: 90px; }
+    .param-row input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 5px 8px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; }
+    .btn { background: var(--accent); color: #fff; border: none; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+    .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .result { margin-top: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 10px; font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; display: none; }
+    .result.visible { display: block; }
+    .result.ok { border-color: var(--success); }
+    .result.err { border-color: var(--error); }
+    .status-badge { font-size: 0.75rem; padding: 1px 6px; border-radius: 3px; margin-left: auto; }
+    .actions { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <h1>HA PC Remote — API Explorer</h1>
+  <p class="subtitle">Interactive debug page. All requests are authenticated automatically via the configured API key.</p>
+
+  <div id="app"></div>
+
+  <script>
+    const API_KEY = document.querySelector('meta[name="api-key"]').content;
+
+    const endpoints = [
+      {
+        group: "Health",
+        items: [
+          { method: "GET", path: "/api/health", desc: "Service health check + MAC addresses" }
+        ]
+      },
+      {
+        group: "System",
+        items: [
+          { method: "GET", path: "/api/system/idle", desc: "Seconds since last user input" },
+          { method: "POST", path: "/api/system/sleep", desc: "Put the PC to sleep" },
+          { method: "GET", path: "/api/system/state", desc: "Full system state (audio, monitors, steam, modes, idle)" },
+          { method: "GET", path: "/api/system/modes", desc: "List configured mode names" },
+          { method: "POST", path: "/api/system/mode/{modeName}", desc: "Apply a named mode", params: [{ name: "modeName", placeholder: "e.g. gaming", segment: true }] }
+        ]
+      },
+      {
+        group: "Apps",
+        items: [
+          { method: "GET", path: "/api/app/status", desc: "Status of all configured apps" },
+          { method: "GET", path: "/api/app/status/{appKey}", desc: "Status of a single app", params: [{ name: "appKey", placeholder: "e.g. firefox", segment: true }] },
+          { method: "POST", path: "/api/app/launch/{appKey}", desc: "Launch an app", params: [{ name: "appKey", placeholder: "e.g. firefox", segment: true }] },
+          { method: "POST", path: "/api/app/kill/{appKey}", desc: "Kill an app", params: [{ name: "appKey", placeholder: "e.g. firefox", segment: true }] }
+        ]
+      },
+      {
+        group: "Audio",
+        items: [
+          { method: "GET", path: "/api/audio/devices", desc: "List audio output devices" },
+          { method: "GET", path: "/api/audio/current", desc: "Current default audio device" },
+          { method: "POST", path: "/api/audio/set/{deviceName}", desc: "Set default audio device", params: [{ name: "deviceName", placeholder: "e.g. Speakers", segment: true }] },
+          { method: "POST", path: "/api/audio/volume/{level}", desc: "Set volume (0-100)", params: [{ name: "level", placeholder: "e.g. 50", segment: true }] }
+        ]
+      },
+      {
+        group: "Monitors",
+        items: [
+          { method: "GET", path: "/api/monitor/list", desc: "List connected monitors" },
+          { method: "GET", path: "/api/monitor/profiles", desc: "List saved monitor profiles" },
+          { method: "POST", path: "/api/monitor/solo/{id}", desc: "Solo a single monitor", params: [{ name: "id", placeholder: "monitor id", segment: true }] },
+          { method: "POST", path: "/api/monitor/enable/{id}", desc: "Enable a monitor", params: [{ name: "id", placeholder: "monitor id", segment: true }] },
+          { method: "POST", path: "/api/monitor/disable/{id}", desc: "Disable a monitor", params: [{ name: "id", placeholder: "monitor id", segment: true }] },
+          { method: "POST", path: "/api/monitor/primary/{id}", desc: "Set primary monitor", params: [{ name: "id", placeholder: "monitor id", segment: true }] },
+          { method: "POST", path: "/api/monitor/set/{profile}", desc: "Apply a monitor profile", params: [{ name: "profile", placeholder: "profile name", segment: true }] }
+        ]
+      },
+      {
+        group: "Steam",
+        items: [
+          { method: "GET", path: "/api/steam/games", desc: "List installed Steam games" },
+          { method: "GET", path: "/api/steam/running", desc: "Currently running Steam game" },
+          { method: "POST", path: "/api/steam/run/{appId}", desc: "Launch a Steam game by app ID", params: [{ name: "appId", placeholder: "e.g. 730", segment: true }] },
+          { method: "POST", path: "/api/steam/stop", desc: "Stop the running Steam game" }
+        ]
+      }
+    ];
+
+    function buildUrl(ep, inputs) {
+      let url = ep.path;
+      if (ep.params) {
+        for (const p of ep.params) {
+          if (p.segment) {
+            url = url.replace(`{${p.name}}`, encodeURIComponent(inputs[p.name] || ''));
+          }
+        }
+      }
+      return url;
+    }
+
+    function render() {
+      const app = document.getElementById('app');
+      let html = '';
+      let idx = 0;
+      for (const g of endpoints) {
+        html += `<div class="group"><div class="group-title">${g.group}</div>`;
+        for (const ep of g.items) {
+          const id = `ep-${idx}`;
+          const mc = ep.method === 'GET' ? 'method-get' : 'method-post';
+          html += `<div class="endpoint">`;
+          html += `<div class="ep-header" onclick="toggle('${id}')">`;
+          html += `<span class="method ${mc}">${ep.method}</span>`;
+          html += `<span class="path">${ep.path}</span>`;
+          html += `<span class="desc">${ep.desc}</span>`;
+          html += `</div>`;
+          html += `<div class="ep-body" id="${id}">`;
+          if (ep.params) {
+            for (const p of ep.params) {
+              html += `<div class="param-row">`;
+              html += `<label>${p.name}</label>`;
+              html += `<input id="${id}-${p.name}" placeholder="${p.placeholder}" />`;
+              html += `</div>`;
+            }
+          }
+          html += `<div class="actions">`;
+          html += `<button class="btn" id="${id}-btn" onclick="fire('${id}', ${idx})">Try it</button>`;
+          html += `</div>`;
+          html += `<div class="result" id="${id}-result"></div>`;
+          html += `</div></div>`;
+          idx++;
+        }
+        html += `</div>`;
+      }
+      app.innerHTML = html;
+    }
+
+    function toggle(id) {
+      document.getElementById(id).classList.toggle('open');
+    }
+
+    function getEndpointByIndex(idx) {
+      let i = 0;
+      for (const g of endpoints) {
+        for (const ep of g.items) {
+          if (i === idx) return ep;
+          i++;
+        }
+      }
+      return null;
+    }
+
+    async function fire(id, idx) {
+      const ep = getEndpointByIndex(idx);
+      if (!ep) return;
+
+      const inputs = {};
+      if (ep.params) {
+        for (const p of ep.params) {
+          inputs[p.name] = document.getElementById(`${id}-${p.name}`).value.trim();
+          if (!inputs[p.name]) {
+            alert(`Please enter ${p.name}`);
+            return;
+          }
+        }
+      }
+
+      const url = buildUrl(ep, inputs);
+      const btn = document.getElementById(`${id}-btn`);
+      const resultEl = document.getElementById(`${id}-result`);
+
+      btn.disabled = true;
+      btn.textContent = '...';
+      resultEl.className = 'result visible';
+      resultEl.textContent = 'Loading...';
+
+      try {
+        const resp = await fetch(url, {
+          method: ep.method,
+          headers: { 'X-Api-Key': API_KEY }
+        });
+        const text = await resp.text();
+        let display;
+        try { display = JSON.stringify(JSON.parse(text), null, 2); }
+        catch { display = text; }
+        resultEl.textContent = `HTTP ${resp.status}\n\n${display}`;
+        resultEl.className = `result visible ${resp.ok ? 'ok' : 'err'}`;
+      } catch (e) {
+        resultEl.textContent = `Error: ${e.message}`;
+        resultEl.className = 'result visible err';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Try it';
+      }
+    }
+
+    render();
+  </script>
+</body>
+</html>

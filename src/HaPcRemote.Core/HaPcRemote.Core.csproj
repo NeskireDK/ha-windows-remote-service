@@ -25,4 +25,9 @@
     <InternalsVisibleTo Include="HaPcRemote.Tray" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Views/*.html" />
+    <EmbeddedResource Include="Views/*.css" />
+  </ItemGroup>
+
 </Project>
