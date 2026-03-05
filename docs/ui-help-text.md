@@ -85,9 +85,6 @@ Used as the source of truth when wiring up ToolTip controls.
 
 ## Power Tab
 
-> **Note:** Current implementation uses "Sleep when HA disconnects" — this is incorrect
-> and needs to be replaced with inactivity-based auto-sleep (see below).
-
 **Auto-Sleep Timeout (minutes)**
 > Minutes of total inactivity before the PC sleeps automatically.
 > Inactivity means: no Steam game running AND no mouse, keyboard, or gamepad input.
