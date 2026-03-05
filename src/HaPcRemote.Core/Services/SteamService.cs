@@ -95,33 +95,58 @@ public class SteamService(
 
         logger.LogDebug("Non-Steam detection: checking {Count} shortcut(s)", shortcuts.Count);
         foreach (var s in shortcuts)
-            logger.LogDebug("  Shortcut [{AppId}] {Name}: ExePath={ExePath}", s.AppId, s.Name, s.ExePath);
+            logger.LogDebug("  Shortcut [{AppId}] {Name}: ExePath={ExePath} LaunchOptions={LaunchOptions}",
+                s.AppId, s.Name, s.ExePath, s.LaunchOptions ?? "(null)");
 
-        var runningPaths = platform.GetRunningProcessPaths().ToList();
-        logger.LogDebug("Non-Steam detection: {Count} running processes", runningPaths.Count);
+        var runningProcesses = platform.GetRunningProcesses().ToList();
+        logger.LogDebug("Non-Steam detection: {Count} running processes", runningProcesses.Count);
 
         // Check for filename-level matches to surface path mismatches
         foreach (var s in shortcuts)
         {
             var exeName = Path.GetFileName(s.ExePath!);
-            var candidates = runningPaths
-                .Where(p => Path.GetFileName(p).Equals(exeName, StringComparison.OrdinalIgnoreCase))
+            var candidates = runningProcesses
+                .Where(p => Path.GetFileName(p.Path).Equals(exeName, StringComparison.OrdinalIgnoreCase))
                 .ToList();
             foreach (var c in candidates)
                 logger.LogDebug("  Filename match for '{Name}': running={Running} | shortcut={Shortcut}",
-                    s.Name, c, s.ExePath);
+                    s.Name, c.Path, s.ExePath);
         }
 
-        var runningSet = runningPaths.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var match = shortcuts.FirstOrDefault(s => runningSet.Contains(s.ExePath!));
-        if (match == null)
+        // Build lookup of processes by exe path (case-insensitive)
+        var processesByPath = runningProcesses
+            .GroupBy(p => p.Path, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var shortcut in shortcuts)
         {
-            logger.LogDebug("Non-Steam detection: no exact path match found");
-            return null;
+            if (!processesByPath.TryGetValue(shortcut.ExePath!, out var matchingProcesses))
+                continue;
+
+            // Single match or no launch options needed — use exe path match directly
+            if (matchingProcesses.Count == 1 || string.IsNullOrEmpty(shortcut.LaunchOptions))
+            {
+                var proc = matchingProcesses[0];
+                logger.LogDebug("Non-Steam detection: matched [{AppId}] {Name} via exe path (pid={Pid})",
+                    shortcut.AppId, shortcut.Name, proc.Pid);
+                return new SteamRunningGame { AppId = shortcut.AppId, Name = shortcut.Name, ProcessId = proc.Pid };
+            }
+
+            // Multiple shortcuts share this exe (emulator case) — disambiguate via CommandLine
+            var cmdMatch = matchingProcesses.FirstOrDefault(p =>
+                p.CommandLine != null &&
+                p.CommandLine.Contains(shortcut.LaunchOptions, StringComparison.OrdinalIgnoreCase));
+
+            if (cmdMatch != null)
+            {
+                logger.LogDebug("Non-Steam detection: matched [{AppId}] {Name} via CommandLine containing LaunchOptions (pid={Pid})",
+                    shortcut.AppId, shortcut.Name, cmdMatch.Pid);
+                return new SteamRunningGame { AppId = shortcut.AppId, Name = shortcut.Name, ProcessId = cmdMatch.Pid };
+            }
         }
 
-        logger.LogDebug("Non-Steam detection: matched [{AppId}] {Name}", match.AppId, match.Name);
-        return new SteamRunningGame { AppId = match.AppId, Name = match.Name };
+        logger.LogDebug("Non-Steam detection: no exact path match found");
+        return null;
     }
 
     public async Task<SteamRunningGame?> LaunchGameAsync(int appId)
@@ -167,21 +192,34 @@ public class SteamService(
         return null; // Steam didn't accept the launch
     }
 
-    public Task StopGameAsync()
+    public async Task StopGameAsync()
     {
         var appId = platform.GetRunningAppId();
-        if (appId == 0)
-            return Task.CompletedTask;
 
+        // No Steam-tracked game running — try process-based shortcut detection
+        if (appId == 0 || IsShortcutAppId(appId))
+        {
+            var runningShortcut = await TryFindRunningShortcutAsync();
+            if (runningShortcut?.ProcessId != null)
+            {
+                logger.LogInformation("Stopping non-Steam shortcut [{AppId}] {Name} (pid={Pid})",
+                    runningShortcut.AppId, runningShortcut.Name, runningShortcut.ProcessId);
+                platform.KillProcess(runningShortcut.ProcessId.Value);
+                return;
+            }
+
+            if (appId == 0)
+                return;
+        }
+
+        // Regular Steam game — kill processes in install directory
         var steamPath = platform.GetSteamPath();
         if (steamPath == null)
-            return Task.CompletedTask;
+            return;
 
         var installDir = GetGameInstallDir(steamPath, appId);
         if (installDir != null)
             platform.KillProcessesInDirectory(installDir);
-
-        return Task.CompletedTask;
     }
 
     public async Task<string?> GetArtworkPathAsync(int appId)
@@ -381,6 +419,9 @@ public class SteamService(
                 appId = GenerateShortcutAppId(exe ?? "", appName);
             }
 
+            var launchOptions = entry["LaunchOptions"]?.ToString()
+                                ?? entry["launchoptions"]?.ToString();
+
             var lastPlayedStr = entry["LastPlayTime"]?.ToString();
             long.TryParse(lastPlayedStr, out var lastPlayed);
 
@@ -390,7 +431,8 @@ public class SteamService(
                 Name = appName,
                 LastPlayed = lastPlayed,
                 IsShortcut = true,
-                ExePath = string.IsNullOrEmpty(exe) ? null : exe
+                ExePath = string.IsNullOrEmpty(exe) ? null : exe,
+                LaunchOptions = string.IsNullOrEmpty(launchOptions) ? null : launchOptions
             });
         }
 
@@ -491,14 +533,17 @@ public class SteamService(
             }
         }
 
-        // Discover non-Steam shortcuts from all userdata profiles
-        var shortcuts = LoadShortcuts(steamPath);
-        games.AddRange(shortcuts);
-
-        return games
+        // Limit regular Steam games to top 20 by last played
+        var topSteamGames = games
             .OrderByDescending(g => g.LastPlayed)
             .Take(20)
             .ToList();
+
+        // Discover non-Steam shortcuts from all userdata profiles — keep all for detection
+        var shortcuts = LoadShortcuts(steamPath);
+        topSteamGames.AddRange(shortcuts);
+
+        return topSteamGames;
     }
 
     private static List<SteamGame> LoadShortcuts(string steamPath)
