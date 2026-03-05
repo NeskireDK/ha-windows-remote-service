@@ -52,7 +52,40 @@ public class MonitorService(IOptionsMonitor<PcRemoteOptions> options, ICliRunner
         if (!File.Exists(profilePath))
             throw new KeyNotFoundException($"Monitor profile '{profileName}' not found.");
 
+        logger.LogInformation("Applying monitor profile '{Profile}' from {Path}", profileName, profilePath);
+
+        // Enable all inactive monitors before loading config.
+        // MultiMonitorTool /LoadConfig can fail to re-enable disabled monitors,
+        // so we bring them all online first, then let the profile sort out
+        // which ones stay active, primary, etc.
+        await EnableAllInactiveMonitorsAsync();
+
         await cliRunner.RunAsync(GetExePath(), ["/LoadConfig", profilePath]);
+
+        InvalidateCache();
+        logger.LogInformation("Monitor profile '{Profile}' applied successfully", profileName);
+    }
+
+    internal async Task EnableAllInactiveMonitorsAsync()
+    {
+        var monitors = await GetMonitorsAsync();
+        var inactive = monitors.Where(m => !m.IsActive).ToList();
+
+        if (inactive.Count == 0)
+        {
+            logger.LogDebug("All monitors already active, no pre-enable needed");
+            return;
+        }
+
+        foreach (var m in inactive)
+        {
+            logger.LogInformation("Pre-enabling inactive monitor {Name} ({Id}) before profile load",
+                m.Name, m.MonitorId);
+            await cliRunner.RunAsync(GetExePath(), ["/enable", m.Name]);
+            await Task.Delay(500);
+        }
+
+        InvalidateCache();
     }
 
     // ── Monitor control methods ──────────────────────────────────────
