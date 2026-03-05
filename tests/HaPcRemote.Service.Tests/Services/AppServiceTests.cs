@@ -19,10 +19,16 @@ public class AppServiceTests
         return monitor;
     }
 
+    private static AppService CreateService(
+        Dictionary<string, AppDefinitionOptions>? apps = null,
+        IAppLauncher? launcher = null,
+        IBigPictureTracker? tracker = null) =>
+        new(CreateOptions(apps), launcher ?? A.Fake<IAppLauncher>(), tracker ?? A.Fake<IBigPictureTracker>());
+
     [Fact]
     public async Task LaunchAsync_UnknownKey_ThrowsKeyNotFoundException()
     {
-        var service = new AppService(CreateOptions(), A.Fake<IAppLauncher>());
+        var service = CreateService();
 
         await Should.ThrowAsync<KeyNotFoundException>(
             () => service.LaunchAsync("nonexistent"));
@@ -31,7 +37,7 @@ public class AppServiceTests
     [Fact]
     public async Task KillAsync_UnknownKey_ThrowsKeyNotFoundException()
     {
-        var service = new AppService(CreateOptions(), A.Fake<IAppLauncher>());
+        var service = CreateService();
 
         await Should.ThrowAsync<KeyNotFoundException>(
             () => service.KillAsync("nonexistent"));
@@ -40,7 +46,7 @@ public class AppServiceTests
     [Fact]
     public async Task GetStatusAsync_UnknownKey_ThrowsKeyNotFoundException()
     {
-        var service = new AppService(CreateOptions(), A.Fake<IAppLauncher>());
+        var service = CreateService();
 
         await Should.ThrowAsync<KeyNotFoundException>(
             () => service.GetStatusAsync("nonexistent"));
@@ -64,7 +70,7 @@ public class AppServiceTests
                 ProcessName = "calc_test_unlikely_running_12345"
             }
         };
-        var service = new AppService(CreateOptions(apps), A.Fake<IAppLauncher>());
+        var service = CreateService(apps);
 
         var result = await service.GetAllStatusesAsync();
 
@@ -76,7 +82,7 @@ public class AppServiceTests
     [Fact]
     public async Task GetAllStatusesAsync_EmptyConfig_ReturnsEmptyList()
     {
-        var service = new AppService(CreateOptions(), A.Fake<IAppLauncher>());
+        var service = CreateService();
 
         var result = await service.GetAllStatusesAsync();
 
@@ -95,7 +101,7 @@ public class AppServiceTests
                 ProcessName = "myapp_test_unlikely_running_12345"
             }
         };
-        var service = new AppService(CreateOptions(apps), A.Fake<IAppLauncher>());
+        var service = CreateService(apps);
 
         var result = await service.GetStatusAsync("myapp");
 
@@ -118,7 +124,7 @@ public class AppServiceTests
                 ProcessName = "notepad"
             }
         };
-        var service = new AppService(CreateOptions(apps), launcher);
+        var service = CreateService(apps, launcher);
 
         await service.LaunchAsync("notepad");
 
@@ -139,7 +145,7 @@ public class AppServiceTests
                 ProcessName = "calc"
             }
         };
-        var service = new AppService(CreateOptions(apps), launcher);
+        var service = CreateService(apps, launcher);
 
         await service.LaunchAsync("calc");
 
@@ -159,7 +165,7 @@ public class AppServiceTests
                 ProcessName = "notepad_unlikely_running_xyz_12345"
             }
         };
-        var service = new AppService(CreateOptions(apps), A.Fake<IAppLauncher>());
+        var service = CreateService(apps);
 
         // Process not running — should complete without throwing
         await Should.NotThrowAsync(() => service.KillAsync("notepad"));
@@ -177,7 +183,7 @@ public class AppServiceTests
                 ProcessName = "myapp_unlikely_running_xyz_12345"
             }
         };
-        var service = new AppService(CreateOptions(apps), A.Fake<IAppLauncher>());
+        var service = CreateService(apps);
 
         var result = await service.GetAllStatusesAsync();
 
@@ -198,7 +204,7 @@ public class AppServiceTests
                 ProcessName = "ghost_never_running_zzz_99999"
             }
         };
-        var service = new AppService(CreateOptions(apps), A.Fake<IAppLauncher>());
+        var service = CreateService(apps);
 
         var result = await service.GetStatusAsync("ghost");
 
@@ -220,7 +226,7 @@ public class AppServiceTests
                 UseShellExecute = true
             }
         };
-        var service = new AppService(CreateOptions(apps), launcher);
+        var service = CreateService(apps, launcher);
 
         await service.LaunchAsync("steam");
 
@@ -241,7 +247,7 @@ public class AppServiceTests
                 ProcessName = "notepad"
             }
         };
-        var service = new AppService(CreateOptions(apps), A.Fake<IAppLauncher>());
+        var service = CreateService(apps);
 
         // Default Dictionary is case-sensitive — "Notepad" != "notepad"
         await Should.ThrowAsync<KeyNotFoundException>(

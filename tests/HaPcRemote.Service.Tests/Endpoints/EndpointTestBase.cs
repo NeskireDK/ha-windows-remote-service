@@ -55,6 +55,7 @@ public class EndpointTestBase : IAsyncLifetime
         builder.Services.AddSingleton(ConfigWriter);
         builder.Services.AddSingleton(RestartService);
         builder.Services.AddSingleton(UpdateService);
+        builder.Services.AddSingleton<IBigPictureTracker, BigPictureTracker>();
 
         // Real services that delegate to fakes
         builder.Services.AddHttpClient();
