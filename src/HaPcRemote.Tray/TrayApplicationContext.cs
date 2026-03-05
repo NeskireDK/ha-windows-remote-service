@@ -28,7 +28,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly System.Windows.Forms.Timer _updateTimer;
     private readonly string _profilesPath;
     private readonly int _port;
-    private readonly IServiceProvider _webServices;
+    private readonly Func<IServiceProvider> _serviceAccessor;
     private readonly System.Windows.Forms.Timer _steamPollTimer;
     private readonly Icon _defaultIcon;
     private Icon? _playingIcon;
@@ -41,12 +41,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private ToolStripMenuItem? _autoUpdateMenuItem;
     private UpdateChecker.ReleaseInfo? _pendingRelease;
 
-    public TrayApplicationContext(IServiceProvider webServices, CancellationTokenSource webCts, InMemoryLogProvider logProvider)
+    public TrayApplicationContext(Func<IServiceProvider> serviceAccessor, CancellationTokenSource webCts, InMemoryLogProvider logProvider)
     {
         _webCts = webCts;
         _logProvider = logProvider;
-        _webServices = webServices;
+        _serviceAccessor = serviceAccessor;
 
+        var webServices = serviceAccessor();
         var loggerFactory = webServices.GetRequiredService<ILoggerFactory>();
         _logger = loggerFactory.CreateLogger<TrayApplicationContext>();
 
@@ -120,18 +121,35 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void OnShowSettings(object? sender, EventArgs e)
     {
         EnsureSettingsForm();
-        _settingsForm!.ShowTab(0); // General tab
+        _settingsForm?.ShowTab(0); // General tab
     }
 
     private void OnShowLog(object? sender, EventArgs e)
     {
         EnsureSettingsForm();
-        _settingsForm!.ShowTab(4); // Log tab
+        _settingsForm?.ShowTab(4); // Log tab
     }
 
     private void EnsureSettingsForm()
     {
-        _settingsForm ??= new SettingsForm(_webServices, _logProvider);
+        if (_settingsForm is { IsDisposed: false })
+            return;
+
+        _settingsForm?.Dispose();
+
+        try
+        {
+            _settingsForm = new SettingsForm(_serviceAccessor(), _logProvider);
+        }
+        catch (ObjectDisposedException)
+        {
+            _settingsForm = null;
+            MessageBox.Show(
+                "The service is restarting. Please try again in a moment.",
+                "HA PC Remote",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
     }
 
     private void OnShowApiKey(object? sender, EventArgs e)
@@ -169,7 +187,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         try
         {
-            var steamService = _webServices.GetRequiredService<ISteamService>();
+            var steamService = _serviceAccessor().GetRequiredService<ISteamService>();
             var running = await steamService.GetRunningGameAsync();
             var isPlaying = running != null;
             if (isPlaying == _isGamePlaying) return;

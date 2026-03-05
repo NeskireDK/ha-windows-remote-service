@@ -69,7 +69,7 @@ internal static class Program
             }
         });
 
-        Application.Run(new TrayApplicationContext(webApp.Services, webCts, logProvider));
+        Application.Run(new TrayApplicationContext(() => currentApp.Services, webCts, logProvider));
 
         webCts.Cancel();
         try { currentApp.StopAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult(); } catch { }
