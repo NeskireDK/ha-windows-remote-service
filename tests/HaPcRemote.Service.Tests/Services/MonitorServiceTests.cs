@@ -116,6 +116,7 @@ public class MonitorServiceTests : IDisposable
     public async Task ApplyProfileAsync_ValidProfile_CallsCliRunner()
     {
         File.WriteAllText(Path.Combine(_tempDir, "gaming.cfg"), "");
+        SetupCliRunnerWithXml(TestData.Load("monitors-sample.xml"));
         var service = CreateService();
 
         await service.ApplyProfileAsync("gaming");
@@ -124,6 +125,83 @@ public class MonitorServiceTests : IDisposable
             A<string>.That.EndsWith("MultiMonitorTool.exe"),
             A<IEnumerable<string>>.That.Contains("/LoadConfig"),
             A<int>._)).MustHaveHappenedOnceExactly();
+    }
+
+    [Fact]
+    public async Task ApplyProfileAsync_WithInactiveMonitors_EnablesThemBeforeLoadConfig()
+    {
+        File.WriteAllText(Path.Combine(_tempDir, "desk.cfg"), "");
+        var calls = new List<string[]>();
+        A.CallTo(() => _cliRunner.RunAsync(A<string>._, A<IEnumerable<string>>._, A<int>._))
+            .Invokes((string _, IEnumerable<string> args, int _) =>
+            {
+                var argList = args.ToList();
+                if (argList.Count >= 2 && argList[0] == "/sxml" && !string.IsNullOrEmpty(argList[1]))
+                    File.WriteAllText(argList[1], TestData.Load("monitors-inactive-target.xml"));
+                else
+                    calls.Add(argList.ToArray());
+            })
+            .Returns(string.Empty);
+
+        var service = CreateService();
+
+        await service.ApplyProfileAsync("desk");
+
+        // First call: enable the inactive monitor (DISPLAY2)
+        calls[0][0].ShouldBe("/enable");
+        calls[0][1].ShouldBe(@"\\.\DISPLAY2");
+
+        // Second call: /LoadConfig
+        calls[1][0].ShouldBe("/LoadConfig");
+        calls[1][1].ShouldEndWith("desk.cfg");
+    }
+
+    [Fact]
+    public async Task ApplyProfileAsync_AllMonitorsActive_SkipsPreEnable()
+    {
+        File.WriteAllText(Path.Combine(_tempDir, "gaming.cfg"), "");
+        var calls = new List<string[]>();
+        A.CallTo(() => _cliRunner.RunAsync(A<string>._, A<IEnumerable<string>>._, A<int>._))
+            .Invokes((string _, IEnumerable<string> args, int _) =>
+            {
+                var argList = args.ToList();
+                if (argList.Count >= 2 && argList[0] == "/sxml" && !string.IsNullOrEmpty(argList[1]))
+                    File.WriteAllText(argList[1], TestData.Load("monitors-sample.xml"));
+                else
+                    calls.Add(argList.ToArray());
+            })
+            .Returns(string.Empty);
+
+        var service = CreateService();
+
+        await service.ApplyProfileAsync("gaming");
+
+        // Only call should be /LoadConfig — no /enable calls since all monitors are active
+        calls.Count.ShouldBe(1);
+        calls[0][0].ShouldBe("/LoadConfig");
+    }
+
+    [Fact]
+    public async Task ApplyProfileAsync_InvalidatesCache()
+    {
+        File.WriteAllText(Path.Combine(_tempDir, "gaming.cfg"), "");
+        SetupCliRunnerWithXml(TestData.Load("monitors-sample.xml"));
+        var service = CreateService();
+
+        // Prime the cache
+        await service.GetMonitorsAsync();
+
+        // Apply profile (EnableAllInactive uses cached monitors, no extra /sxml call)
+        await service.ApplyProfileAsync("gaming");
+
+        // GetMonitorsAsync should hit the CLI again (cache was invalidated by ApplyProfile)
+        await service.GetMonitorsAsync();
+
+        // 2 /sxml calls: initial prime + post-apply (EnableAllInactive used cached data)
+        A.CallTo(() => _cliRunner.RunAsync(
+            A<string>._,
+            A<IEnumerable<string>>.That.Matches(a => a.First() == "/sxml"),
+            A<int>._)).MustHaveHappened(2, Times.Exactly);
     }
 
     // ── XML parsing tests ─────────────────────────────────────────────
