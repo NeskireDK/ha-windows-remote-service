@@ -40,7 +40,10 @@ Name: "{commonstartup}\HA PC Remote Tray"; Filename: "{app}\{#TrayExeName}"; Com
 Name: "{commonstartmenu}\{#MyAppName}"; Filename: "{app}\{#TrayExeName}"; Comment: "HA PC Remote system tray"
 
 [Run]
-Filename: "{app}\{#TrayExeName}"; Flags: nowait runasoriginaluser
+; Interactive install: pre-checked checkbox "Launch HA PC Remote"
+Filename: "{app}\{#TrayExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+; Silent install: always launch after install
+Filename: "{app}\{#TrayExeName}"; Flags: nowait skipifnotsilent runasoriginaluser
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\tools"
