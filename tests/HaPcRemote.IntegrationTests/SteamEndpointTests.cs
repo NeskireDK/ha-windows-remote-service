@@ -4,6 +4,7 @@ using Shouldly;
 
 namespace HaPcRemote.IntegrationTests;
 
+[Collection("Service")]
 public class SteamEndpointTests : IntegrationTestBase
 {
     [Fact]
@@ -32,7 +33,7 @@ public class SteamEndpointTests : IntegrationTestBase
 
         foreach (var game in result.Data)
         {
-            game.AppId.ShouldBeGreaterThan(0);
+            game.AppId.ShouldNotBe(0);
             game.Name.ShouldNotBeNullOrWhiteSpace();
         }
     }
@@ -49,10 +50,11 @@ public class SteamEndpointTests : IntegrationTestBase
         result.ShouldNotBeNull();
         result.Data.ShouldNotBeNull();
 
-        if (result.Data.Count < 2)
+        var steamGames = result.Data.Where(g => !g.IsShortcut).ToList();
+        if (steamGames.Count < 2)
             return;
 
-        var lastPlayed = result.Data.Select(g => g.LastPlayed).ToList();
+        var lastPlayed = steamGames.Select(g => g.LastPlayed).ToList();
         lastPlayed.ShouldBeInOrder(SortDirection.Descending);
     }
 

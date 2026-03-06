@@ -3,6 +3,7 @@ using Shouldly;
 
 namespace HaPcRemote.IntegrationTests;
 
+[Collection("Service")]
 public class MonitorEndpointTests : IntegrationTestBase
 {
     [Fact]

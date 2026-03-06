@@ -121,7 +121,11 @@ public class SteamService(
         foreach (var shortcut in shortcuts)
         {
             if (!processesByPath.TryGetValue(shortcut.ExePath!, out var matchingProcesses))
+            {
+                logger.LogDebug("Non-Steam detection: no process path match for [{AppId}] {Name} (ExePath={ExePath})",
+                    shortcut.AppId, shortcut.Name, shortcut.ExePath);
                 continue;
+            }
 
             // Single match or no launch options needed — use exe path match directly
             if (matchingProcesses.Count == 1 || string.IsNullOrEmpty(shortcut.LaunchOptions))
@@ -195,21 +199,30 @@ public class SteamService(
     public async Task StopGameAsync()
     {
         var appId = platform.GetRunningAppId();
+        logger.LogInformation("StopGame: Steam reports running appId={AppId}, isShortcut={IsShortcut}",
+            appId, IsShortcutAppId(appId));
 
         // No Steam-tracked game running — try process-based shortcut detection
         if (appId == 0 || IsShortcutAppId(appId))
         {
+            logger.LogInformation("StopGame: attempting process-based shortcut detection (appId={AppId})", appId);
             var runningShortcut = await TryFindRunningShortcutAsync();
             if (runningShortcut?.ProcessId != null)
             {
-                logger.LogInformation("Stopping non-Steam shortcut [{AppId}] {Name} (pid={Pid})",
+                logger.LogInformation("StopGame: killing non-Steam shortcut [{AppId}] {Name} (pid={Pid})",
                     runningShortcut.AppId, runningShortcut.Name, runningShortcut.ProcessId);
                 platform.KillProcess(runningShortcut.ProcessId.Value);
                 return;
             }
 
+            logger.LogWarning("StopGame: shortcut detection returned no match (ProcessId=null, Data={HasData})",
+                runningShortcut != null);
+
             if (appId == 0)
+            {
+                logger.LogWarning("StopGame: nothing to stop — appId=0 and no shortcut match");
                 return;
+            }
         }
 
         // Regular Steam game — kill processes in install directory
@@ -380,7 +393,7 @@ public class SteamService(
         return data["installdir"]?.ToString();
     }
 
-    internal static List<SteamGame> ParseShortcuts(Stream stream)
+    internal static List<SteamGame> ParseShortcuts(Stream stream, ILogger? logger = null)
     {
         var shortcuts = new List<SteamGame>();
         var kv = KVSerializer.Create(KVSerializationFormat.KeyValues1Binary);
@@ -389,8 +402,9 @@ public class SteamService(
         {
             root = kv.Deserialize(stream);
         }
-        catch
+        catch (Exception ex)
         {
+            logger?.LogWarning(ex, "Shortcut parsing: failed to deserialize shortcuts.vdf");
             return shortcuts;
         }
 
@@ -401,9 +415,12 @@ public class SteamService(
             if (string.IsNullOrEmpty(appName))
                 continue;
 
-            var exe = entry["Exe"]?.ToString() ?? entry["exe"]?.ToString();
-            if (!string.IsNullOrEmpty(exe))
-                exe = exe.Trim('"');
+            var rawExe = entry["Exe"]?.ToString() ?? entry["exe"]?.ToString();
+            logger?.LogDebug("Shortcut parsing [{Name}]: raw Exe field = {RawExe}", appName, rawExe ?? "(null)");
+
+            var (exe, exeArgs) = ParseExeField(rawExe);
+            logger?.LogDebug("Shortcut parsing [{Name}]: parsed ExePath={ExePath}, ExeArgs={ExeArgs}",
+                appName, exe ?? "(null)", exeArgs ?? "(null)");
 
             // Steam stores shortcut appid as a signed 32-bit int (high bit set).
             // Try appid first, then fallback to calculating from exe+appname.
@@ -422,8 +439,19 @@ public class SteamService(
             var launchOptions = entry["LaunchOptions"]?.ToString()
                                 ?? entry["launchoptions"]?.ToString();
 
+            // If the Exe field contained arguments and LaunchOptions is empty, use the extracted args
+            if (string.IsNullOrEmpty(launchOptions) && !string.IsNullOrEmpty(exeArgs))
+            {
+                launchOptions = exeArgs;
+                logger?.LogDebug("Shortcut parsing [{Name}]: promoted exe args to LaunchOptions={LaunchOptions}",
+                    appName, launchOptions);
+            }
+
             var lastPlayedStr = entry["LastPlayTime"]?.ToString();
             long.TryParse(lastPlayedStr, out var lastPlayed);
+
+            logger?.LogDebug("Shortcut parsing [{Name}]: AppId={AppId}, ExePath={ExePath}, LaunchOptions={LaunchOptions}",
+                appName, appId, exe ?? "(null)", launchOptions ?? "(null)");
 
             shortcuts.Add(new SteamGame
             {
@@ -437,6 +465,51 @@ public class SteamService(
         }
 
         return shortcuts;
+    }
+
+    /// <summary>
+    /// Parses the Exe field from shortcuts.vdf. Steam stores this as a quoted path
+    /// optionally followed by arguments, e.g.: "D:\emulator\emu.exe" -g "D:\games\rom.bin"
+    /// Returns (exePath, args) where args may be null.
+    /// </summary>
+    internal static (string? ExePath, string? Args) ParseExeField(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw))
+            return (null, null);
+
+        var trimmed = raw.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+            return (null, null);
+
+        // Case 1: Quoted path — extract path between first pair of quotes, rest is args
+        if (trimmed.StartsWith('"'))
+        {
+            var closingQuote = trimmed.IndexOf('"', 1);
+            if (closingQuote > 1)
+            {
+                var exePath = trimmed[1..closingQuote];
+                var remainder = trimmed[(closingQuote + 1)..].Trim();
+                return (exePath, string.IsNullOrEmpty(remainder) ? null : remainder);
+            }
+
+            // Malformed: opening quote but no closing — strip quotes and return as-is
+            return (trimmed.Trim('"'), null);
+        }
+
+        // Case 2: Unquoted path — split on first space (if path doesn't contain spaces)
+        // But prefer checking if the whole string is a valid file path first
+        if (File.Exists(trimmed))
+            return (trimmed, null);
+
+        var spaceIdx = trimmed.IndexOf(' ');
+        if (spaceIdx > 0)
+        {
+            var candidate = trimmed[..spaceIdx];
+            var remainder = trimmed[(spaceIdx + 1)..].Trim();
+            return (candidate, string.IsNullOrEmpty(remainder) ? null : remainder);
+        }
+
+        return (trimmed, null);
     }
 
     /// <summary>
@@ -562,7 +635,7 @@ public class SteamService(
             try
             {
                 using var stream = File.OpenRead(shortcutsPath);
-                var parsed = ParseShortcuts(stream);
+                var parsed = ParseShortcuts(stream, null);
                 shortcuts.AddRange(parsed);
             }
             catch

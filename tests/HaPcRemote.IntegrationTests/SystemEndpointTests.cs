@@ -1,5 +1,6 @@
 namespace HaPcRemote.IntegrationTests;
 
+[Collection("Service")]
 public class SystemEndpointTests : IntegrationTestBase
 {
     [Fact(Skip = "Would put machine to sleep")]

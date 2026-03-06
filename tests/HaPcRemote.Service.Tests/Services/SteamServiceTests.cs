@@ -1010,4 +1010,49 @@ public class SteamServiceTests
         var withLaunchOpts = shortcuts.FirstOrDefault(s => s.LaunchOptions != null);
         withLaunchOpts.ShouldNotBeNull("Expected at least one shortcut with LaunchOptions in shortcuts.vdf");
     }
+
+    // ── ParseExeField tests ─────────────────────────────────────────
+
+    [Theory]
+    [InlineData(null, null, null)]
+    [InlineData("", null, null)]
+    [InlineData("  ", null, null)]
+    public void ParseExeField_EmptyOrNull_ReturnsNulls(string? input, string? expectedExe, string? expectedArgs)
+    {
+        var (exe, args) = SteamService.ParseExeField(input);
+        exe.ShouldBe(expectedExe);
+        args.ShouldBe(expectedArgs);
+    }
+
+    [Fact]
+    public void ParseExeField_QuotedExeOnly_ReturnsPathNoArgs()
+    {
+        var (exe, args) = SteamService.ParseExeField(@"""C:\Games\custom.exe""");
+        exe.ShouldBe(@"C:\Games\custom.exe");
+        args.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ParseExeField_QuotedExeWithArgs_SplitsCorrectly()
+    {
+        var (exe, args) = SteamService.ParseExeField(@"""D:\shadps4\shadPS4.exe"" -g ""D:\shadps4\games\CUSA03173\eboot.bin""");
+        exe.ShouldBe(@"D:\shadps4\shadPS4.exe");
+        args.ShouldBe(@"-g ""D:\shadps4\games\CUSA03173\eboot.bin""");
+    }
+
+    [Fact]
+    public void ParseExeField_UnquotedExe_ReturnsPath()
+    {
+        var (exe, args) = SteamService.ParseExeField(@"C:\simple.exe");
+        exe.ShouldBe(@"C:\simple.exe");
+        args.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ParseExeField_QuotedExeWithSimpleArgs_SplitsCorrectly()
+    {
+        var (exe, args) = SteamService.ParseExeField(@"""C:\Emulators\rpcs3.exe"" --no-gui");
+        exe.ShouldBe(@"C:\Emulators\rpcs3.exe");
+        args.ShouldBe("--no-gui");
+    }
 }

@@ -3,6 +3,7 @@ using Shouldly;
 
 namespace HaPcRemote.IntegrationTests;
 
+[Collection("Service")]
 [Trait("Category", "ReadOnly")]
 public class HealthEndpointTests : IntegrationTestBase
 {

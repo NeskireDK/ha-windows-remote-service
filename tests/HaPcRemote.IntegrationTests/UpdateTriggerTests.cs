@@ -5,6 +5,7 @@ using Xunit.Abstractions;
 
 namespace HaPcRemote.IntegrationTests;
 
+[Collection("Service")]
 public class UpdateTriggerTests : IntegrationTestBase
 {
     private readonly ITestOutputHelper _output;
