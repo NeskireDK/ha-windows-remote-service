@@ -7,6 +7,8 @@ namespace HaPcRemote.Tray.Forms;
 internal sealed class TabFooter : Panel
 {
     private readonly FlowLayoutPanel _buttons;
+    private readonly Label _statusLabel;
+    private System.Windows.Forms.Timer? _statusTimer;
 
     public TabFooter()
     {
@@ -21,6 +23,16 @@ internal sealed class TabFooter : Panel
             BackColor = Color.FromArgb(60, 60, 60)
         };
 
+        _statusLabel = new Label
+        {
+            AutoSize = true,
+            ForeColor = Color.LightGreen,
+            Font = new Font("Segoe UI", 9f),
+            Padding = new Padding(8, 7, 0, 0),
+            Dock = DockStyle.Left,
+            Visible = false
+        };
+
         _buttons = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -30,6 +42,7 @@ internal sealed class TabFooter : Panel
         };
 
         Controls.Add(_buttons);
+        Controls.Add(_statusLabel);
         Controls.Add(separator);
     }
 
@@ -42,6 +55,28 @@ internal sealed class TabFooter : Panel
         _buttons.Controls.Clear();
         foreach (var b in buttons)
             _buttons.Controls.Add(b);
+        _statusLabel.Visible = false;
+    }
+
+    /// <summary>Show a brief status message that fades after a few seconds.</summary>
+    public void ShowStatus(string text, Color? color = null)
+    {
+        _statusTimer?.Stop();
+        _statusTimer?.Dispose();
+
+        _statusLabel.Text = text;
+        _statusLabel.ForeColor = color ?? Color.LightGreen;
+        _statusLabel.Visible = true;
+
+        _statusTimer = new System.Windows.Forms.Timer { Interval = 2500 };
+        _statusTimer.Tick += (_, _) =>
+        {
+            _statusLabel.Visible = false;
+            _statusTimer.Stop();
+            _statusTimer.Dispose();
+            _statusTimer = null;
+        };
+        _statusTimer.Start();
     }
 
     public static Button MakeButton(string text, int width = 90, Color? accentColor = null) => new()

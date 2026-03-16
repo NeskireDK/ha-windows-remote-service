@@ -14,6 +14,7 @@ internal sealed class GamesTab : TabPage, ISettingsTab
     private readonly ComboBox _defaultModeCombo;
     private readonly DataGridView _gameGrid;
     private readonly ToolTip _toolTip = new();
+    private TabFooter? _footer;
 
     public GamesTab(IServiceProvider services)
     {
@@ -123,12 +124,14 @@ internal sealed class GamesTab : TabPage, ISettingsTab
 
     public IEnumerable<Button> CreateFooterButtons()
     {
-        var saveButton = TabFooter.MakeSaveButton("Save Bindings", 110);
-        var cancelButton = TabFooter.MakeCancelButton();
-        saveButton.Click += OnSave;
-        cancelButton.Click += async (_, _) => await RefreshAsync();
-        return [saveButton, cancelButton];
+        var applyButton = TabFooter.MakeSaveButton("Apply");
+        var discardButton = TabFooter.MakeCancelButton("Discard");
+        applyButton.Click += OnSave;
+        discardButton.Click += async (_, _) => await RefreshAsync();
+        return [applyButton, discardButton];
     }
+
+    internal void SetFooter(TabFooter footer) => _footer = footer;
 
     protected override async void OnVisibleChanged(EventArgs e)
     {
@@ -223,7 +226,7 @@ internal sealed class GamesTab : TabPage, ISettingsTab
         };
         _configWriter.SaveSteamBindings(steamConfig);
 
-        MessageBox.Show("Game bindings saved.", "Saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        _footer?.ShowStatus("Saved");
     }
 
     private static Label MakeLabel(string text) => new()

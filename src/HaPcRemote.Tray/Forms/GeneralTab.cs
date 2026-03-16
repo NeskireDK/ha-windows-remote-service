@@ -167,10 +167,10 @@ internal sealed class GeneralTab : TabPage, ISettingsTab
     public IEnumerable<Button> CreateFooterButtons()
     {
         var applyButton = TabFooter.MakeSaveButton("Apply");
-        var cancelButton = TabFooter.MakeCancelButton();
+        var discardButton = TabFooter.MakeCancelButton("Discard");
         applyButton.Click += OnApply;
-        cancelButton.Click += OnCancel;
-        return [applyButton, cancelButton];
+        discardButton.Click += OnCancel;
+        return [applyButton, discardButton];
     }
 
     private void UpdatePortStatus()

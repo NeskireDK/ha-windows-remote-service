@@ -9,6 +9,11 @@ internal sealed class TraySettings
     public bool AutoUpdate { get; set; } = false;
     public string LogLevel { get; set; } = "Warning";
 
+    public int SettingsWidth { get; set; }
+    public int SettingsHeight { get; set; }
+    public int LogViewerWidth { get; set; }
+    public int LogViewerHeight { get; set; }
+
     public static TraySettings Load()
     {
         try

@@ -1,4 +1,5 @@
 using HaPcRemote.Tray.Logging;
+using HaPcRemote.Tray.Models;
 
 using Microsoft.Extensions.Logging;
 
@@ -14,8 +15,12 @@ internal sealed class LogViewerForm : Form
         _provider = provider;
 
         Text = "HA PC Remote - Log";
-        Size = new Size(800, 500);
         MinimumSize = new Size(400, 300);
+
+        var settings = TraySettings.Load();
+        Size = settings.LogViewerWidth > 0 && settings.LogViewerHeight > 0
+            ? new Size(settings.LogViewerWidth, settings.LogViewerHeight)
+            : new Size(800, 500);
         StartPosition = FormStartPosition.CenterScreen;
         ShowInTaskbar = true;
         Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application;
@@ -30,7 +35,7 @@ internal sealed class LogViewerForm : Form
             Font = new Font("Consolas", 9.5f),
             Dock = DockStyle.Fill,
             BorderStyle = BorderStyle.None,
-            WordWrap = false
+            WordWrap = true
         };
 
         var clearButton = new Button
@@ -120,6 +125,12 @@ internal sealed class LogViewerForm : Form
         if (e.CloseReason == CloseReason.UserClosing)
         {
             e.Cancel = true;
+
+            var s = TraySettings.Load();
+            s.LogViewerWidth = Width;
+            s.LogViewerHeight = Height;
+            s.Save();
+
             Hide();
         }
     }

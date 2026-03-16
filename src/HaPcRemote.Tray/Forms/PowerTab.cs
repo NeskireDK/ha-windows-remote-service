@@ -8,6 +8,7 @@ internal sealed class PowerTab : TabPage, ISettingsTab
     private readonly IConfigurationWriter _configWriter;
     private readonly ToolTip _toolTip = new();
     private readonly NumericUpDown _autoSleepInput;
+    private TabFooter? _footer;
 
     public PowerTab(IServiceProvider services)
     {
@@ -55,12 +56,14 @@ internal sealed class PowerTab : TabPage, ISettingsTab
 
     public IEnumerable<Button> CreateFooterButtons()
     {
-        var saveButton = TabFooter.MakeSaveButton();
-        var cancelButton = TabFooter.MakeCancelButton();
-        saveButton.Click += OnSave;
-        cancelButton.Click += OnCancel;
-        return [saveButton, cancelButton];
+        var applyButton = TabFooter.MakeSaveButton("Apply");
+        var discardButton = TabFooter.MakeCancelButton("Discard");
+        applyButton.Click += OnSave;
+        discardButton.Click += OnCancel;
+        return [applyButton, discardButton];
     }
+
+    internal void SetFooter(TabFooter footer) => _footer = footer;
 
     private void OnSave(object? sender, EventArgs e)
     {
@@ -68,7 +71,7 @@ internal sealed class PowerTab : TabPage, ISettingsTab
         {
             AutoSleepAfterMinutes = (int)_autoSleepInput.Value
         });
-        MessageBox.Show("Power settings saved.", "Saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        _footer?.ShowStatus("Saved");
     }
 
     private void OnCancel(object? sender, EventArgs e)

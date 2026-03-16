@@ -28,7 +28,7 @@ internal sealed class LogTab : TabPage, ISettingsTab
             Font = new Font("Consolas", 9.5f),
             Dock = DockStyle.Fill,
             BorderStyle = BorderStyle.None,
-            WordWrap = false
+            WordWrap = true
         };
 
         _port = port;

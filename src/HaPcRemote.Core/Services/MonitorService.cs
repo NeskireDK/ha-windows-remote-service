@@ -133,6 +133,7 @@ public class MonitorService(IOptionsMonitor<PcRemoteOptions> options, ICliRunner
     public async Task EnableMonitorAsync(string id)
     {
         var monitor = await ResolveMonitorAsync(id);
+        logger.LogInformation("Enabling monitor: {Name} ({Id})", monitor.Name, monitor.MonitorId);
         await cliRunner.RunAsync(GetExePath(), ["/enable", monitor.Name]);
         InvalidateCache();
     }
@@ -140,6 +141,7 @@ public class MonitorService(IOptionsMonitor<PcRemoteOptions> options, ICliRunner
     public async Task DisableMonitorAsync(string id)
     {
         var monitor = await ResolveMonitorAsync(id);
+        logger.LogInformation("Disabling monitor: {Name} ({Id})", monitor.Name, monitor.MonitorId);
         await cliRunner.RunAsync(GetExePath(), ["/disable", monitor.Name]);
         InvalidateCache();
     }
@@ -147,8 +149,19 @@ public class MonitorService(IOptionsMonitor<PcRemoteOptions> options, ICliRunner
     public async Task SetPrimaryAsync(string id)
     {
         var monitor = await ResolveMonitorAsync(id);
-        await cliRunner.RunAsync(GetExePath(), ["/SetPrimary", monitor.Name]);
+        logger.LogInformation("Setting primary monitor: {Name} ({Id})", monitor.Name, monitor.MonitorId);
+
+        var output = await cliRunner.RunAsync(GetExePath(), ["/SetPrimary", monitor.Name]);
+        if (!string.IsNullOrWhiteSpace(output))
+            logger.LogDebug("MultiMonitorTool /SetPrimary output: {Output}", output);
+
         InvalidateCache();
+
+        // Verify the change took effect
+        var updated = await GetMonitorsAsync();
+        var target = updated.Find(m => MatchesId(m, id));
+        if (target is not null && !target.IsPrimary)
+            logger.LogWarning("SetPrimary '{Id}' completed but monitor is still not primary — MultiMonitorTool may have silently failed", id);
     }
 
     public async Task SoloMonitorAsync(string id)
@@ -156,14 +169,19 @@ public class MonitorService(IOptionsMonitor<PcRemoteOptions> options, ICliRunner
         var monitors = await GetMonitorsAsync();
         var target = FindMonitor(monitors, id);
 
+        logger.LogInformation("Solo monitor: {Name} ({Id}), currently active={Active}, primary={Primary}",
+            target.Name, target.MonitorId, target.IsActive, target.IsPrimary);
+
         // Step 1: enable the target so it is active before becoming primary
         if (!target.IsActive)
         {
+            logger.LogDebug("Enabling inactive target {Name}", target.Name);
             await cliRunner.RunAsync(GetExePath(), ["/enable", target.Name]);
             await Task.Delay(500);
         }
 
         // Step 2: set the target as primary (must be active first)
+        logger.LogDebug("Setting primary: {Name}", target.Name);
         await cliRunner.RunAsync(GetExePath(), ["/SetPrimary", target.Name]);
         await Task.Delay(500);
 
@@ -172,12 +190,22 @@ public class MonitorService(IOptionsMonitor<PcRemoteOptions> options, ICliRunner
         {
             if (m.IsActive)
             {
+                logger.LogDebug("Disabling other monitor: {Name} ({MonitorId})", m.Name, m.MonitorId);
                 await cliRunner.RunAsync(GetExePath(), ["/disable", m.Name]);
                 await Task.Delay(500);
             }
         }
 
         InvalidateCache();
+
+        // Verify the result
+        var updated = await GetMonitorsAsync();
+        var activeMonitors = updated.Where(m => m.IsActive).ToList();
+        if (activeMonitors.Count != 1 || !MatchesId(activeMonitors[0], id))
+        {
+            var activeNames = string.Join(", ", activeMonitors.Select(m => $"{m.Name} ({m.MonitorId})"));
+            logger.LogWarning("Solo monitor '{Id}' may have failed — active monitors after operation: [{Active}]", id, activeNames);
+        }
     }
 
     // ── XML parsing ──────────────────────────────────────────────────

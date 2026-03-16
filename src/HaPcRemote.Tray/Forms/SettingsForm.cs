@@ -23,8 +23,12 @@ internal sealed class SettingsForm : Form
         InMemoryLogProvider logProvider)
     {
         Text = "HA PC Remote - Settings";
-        Size = new Size(750, 550);
         MinimumSize = new Size(600, 450);
+
+        var settings = TraySettings.Load();
+        Size = settings.SettingsWidth > 0 && settings.SettingsHeight > 0
+            ? new Size(settings.SettingsWidth, settings.SettingsHeight)
+            : new Size(750, 550);
         StartPosition = FormStartPosition.CenterScreen;
         ShowInTaskbar = true;
         Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application;
@@ -55,6 +59,9 @@ internal sealed class SettingsForm : Form
         // ModesTab manages its own footer internally (it has row-management buttons).
         _footer = new TabFooter();
         _tabControl.SelectedIndexChanged += (_, _) => SyncFooter();
+
+        _gamesTab.SetFooter(_footer);
+        _powerTab.SetFooter(_footer);
 
         Controls.Add(_tabControl);
         Controls.Add(_footer);
@@ -91,6 +98,12 @@ internal sealed class SettingsForm : Form
         if (e.CloseReason == CloseReason.UserClosing)
         {
             e.Cancel = true;
+
+            var s = TraySettings.Load();
+            s.SettingsWidth = Width;
+            s.SettingsHeight = Height;
+            s.Save();
+
             Hide();
         }
     }
