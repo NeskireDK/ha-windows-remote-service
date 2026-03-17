@@ -22,6 +22,7 @@ public class HealthEndpointTests : EndpointTestBase
         json.Data.ShouldNotBeNull();
         json.Data.Status.ShouldBe("ok");
         json.Data.MachineName.ShouldNotBeNullOrEmpty();
+        json.Data.Version.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]

@@ -21,7 +21,7 @@ via mDNS.
 
 What this installer does:
   - Installs HA PC Remote to your chosen directory
-  - Downloads SoundVolumeView and MultiMonitorTool (NirSoft, freeware)
+  - Downloads SoundVolumeView (NirSoft, freeware)
   - Adds a firewall rule for the local API (port 5000)
   - Installs .NET 10 Desktop Runtime if not already present
   - Adds the tray app to Windows startup
