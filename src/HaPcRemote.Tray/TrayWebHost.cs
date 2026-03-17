@@ -8,6 +8,7 @@ using HaPcRemote.Service.Native;
 using HaPcRemote.Service.Services;
 using HaPcRemote.Shared.Configuration;
 using HaPcRemote.Tray.Logging;
+using HaPcRemote.Tray.Models;
 using Microsoft.Extensions.Options;
 
 namespace HaPcRemote.Tray;
@@ -96,7 +97,10 @@ internal static class TrayWebHost
         builder.Services.AddSingleton<ISteamPlatform, WindowsSteamPlatform>();
         builder.Services.AddSingleton<IEmulatorTracker, EmulatorTracker>();
         builder.Services.AddSingleton<ISteamService, SteamService>();
-        builder.Services.AddSingleton<IUpdateService, UpdateService>();
+        builder.Services.AddSingleton<IUpdateService>(sp => new UpdateService(
+            sp.GetRequiredService<IHttpClientFactory>(),
+            sp.GetRequiredService<ILogger<UpdateService>>(),
+            includePrereleases: () => TraySettings.Load().IncludePrereleases));
         builder.Services.AddSingleton<IConfigurationWriter>(
             new ConfigurationWriter(writableConfigPath));
 
