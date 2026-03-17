@@ -113,6 +113,13 @@ public sealed partial class LinuxMonitorService(
     public async Task EnableMonitorAsync(string id)
     {
         var monitor = await ResolveMonitorAsync(id);
+
+        if (monitor.IsActive)
+        {
+            logger.LogInformation("Monitor '{Id}' is already enabled, skipping", id);
+            return;
+        }
+
         await cliRunner.RunAsync("xrandr", ["--output", monitor.Name, "--auto"]);
         InvalidateCache();
     }
@@ -120,6 +127,13 @@ public sealed partial class LinuxMonitorService(
     public async Task DisableMonitorAsync(string id)
     {
         var monitor = await ResolveMonitorAsync(id);
+
+        if (!monitor.IsActive)
+        {
+            logger.LogInformation("Monitor '{Id}' is already disabled, skipping", id);
+            return;
+        }
+
         await cliRunner.RunAsync("xrandr", ["--output", monitor.Name, "--off"]);
         InvalidateCache();
     }

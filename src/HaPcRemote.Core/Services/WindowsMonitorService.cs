@@ -176,6 +176,13 @@ internal sealed class WindowsMonitorService : IMonitorService
     {
         var monitors = await GetMonitorsAsync();
         var target = FindMonitor(monitors, id);
+
+        if (target.IsActive)
+        {
+            _logger.LogInformation("Monitor '{Id}' is already enabled, skipping", id);
+            return;
+        }
+
         _logger.LogInformation("Enabling monitor: {Name} ({Id})", target.MonitorName, target.MonitorId);
 
         var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);
@@ -194,6 +201,13 @@ internal sealed class WindowsMonitorService : IMonitorService
     {
         var monitors = await GetMonitorsAsync();
         var target = FindMonitor(monitors, id);
+
+        if (!target.IsActive)
+        {
+            _logger.LogInformation("Monitor '{Id}' is already disabled, skipping", id);
+            return;
+        }
+
         _logger.LogInformation("Disabling monitor: {Name} ({Id})", target.MonitorName, target.MonitorId);
 
         var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);

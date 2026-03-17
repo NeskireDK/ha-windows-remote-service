@@ -360,6 +360,18 @@ public class WindowsMonitorServiceTests
     }
 
     [Fact]
+    public async Task EnableMonitorAsync_AlreadyActive_DoesNotCallApply()
+    {
+        SetupTwoMonitorConfig();
+        var service = CreateService();
+
+        await service.EnableMonitorAsync("GSM59A4"); // already active
+
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .MustNotHaveHappened();
+    }
+
+        [Fact]
     public async Task EnableMonitorAsync_UnknownId_ThrowsKeyNotFoundException()
     {
         SetupTwoMonitorConfig();
@@ -387,6 +399,18 @@ public class WindowsMonitorServiceTests
     }
 
     [Fact]
+    public async Task DisableMonitorAsync_AlreadyInactive_DoesNotCallApply()
+    {
+        SetupOneActiveOneInactive();
+        var service = CreateService();
+
+        await service.DisableMonitorAsync("DEL4321"); // already inactive
+
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .MustNotHaveHappened();
+    }
+
+        [Fact]
     public async Task DisableMonitorAsync_UnknownId_ThrowsKeyNotFoundException()
     {
         SetupTwoMonitorConfig();
@@ -727,7 +751,24 @@ public class WindowsMonitorServiceTests
     [Fact]
     public async Task EnableMonitorAsync_IdenticalEdid_SecondMonitor_ResolvesCorrectTarget()
     {
-        SetupIdenticalMonitors();
+        // Setup identical monitors but second one inactive
+        var paths = new[]
+        {
+            MakeActivePath(Adapter1, targetId: 10, sourceId: 0, sourceModeIdx: 0, targetModeIdx: 1),
+            MakeInactivePath(Adapter1, targetId: 20, sourceId: 1),
+        };
+
+        var modes = new[]
+        {
+            MakeSourceMode(Adapter1, 0, 2560, 1440, 0, 0),
+            MakeTargetMode(Adapter1, 10, 144000, 1000),
+        };
+
+        A.CallTo(() => _api.QueryConfig(A<QueryDisplayConfigFlags>._)).Returns((paths, modes));
+        A.CallTo(() => _api.GetTargetDeviceInfo(Adapter1, 10)).Returns(("LG ULTRAGEAR", (ushort)0x6D1E, (ushort)0x59A4));
+        A.CallTo(() => _api.GetTargetDeviceInfo(Adapter1, 20)).Returns(("LG ULTRAGEAR", (ushort)0x6D1E, (ushort)0x59A4));
+        A.CallTo(() => _api.GetSourceGdiName(Adapter1, 0)).Returns(@"\\.\DISPLAY1");
+
         var service = CreateService();
 
         await service.EnableMonitorAsync("GSM59A4#2");

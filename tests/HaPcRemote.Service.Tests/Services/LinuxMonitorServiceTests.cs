@@ -546,7 +546,25 @@ public class LinuxMonitorServiceTests : IDisposable
             A<int>._)).MustHaveHappened(2, Times.Exactly);
     }
 
-    // ── Save then apply roundtrip test ───────────────────────────────
+    // ── Idempotency tests ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task EnableMonitorAsync_AlreadyActive_DoesNotCallXrandr()
+    {
+        A.CallTo(() => _cliRunner.RunAsync("xrandr",
+            A<IEnumerable<string>>.That.Contains("--listmonitors"), A<int>._))
+            .Returns("Monitors: 1\n 0: +*DP-0 2560/597x1440/336+0+0  DP-0\n");
+
+        var service = CreateService();
+
+        await service.EnableMonitorAsync("DP-0"); // already active
+
+        A.CallTo(() => _cliRunner.RunAsync("xrandr",
+            A<IEnumerable<string>>.That.Contains("--auto"), A<int>._))
+            .MustNotHaveHappened();
+    }
+
+        // ── Save then apply roundtrip test ───────────────────────────────
 
     [Fact]
     public async Task SaveThenApply_GeneratesCorrectXrandrCommand()
