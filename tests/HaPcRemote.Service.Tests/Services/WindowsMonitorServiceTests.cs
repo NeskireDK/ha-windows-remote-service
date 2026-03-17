@@ -490,6 +490,40 @@ public class WindowsMonitorServiceTests
     }
 
     [Fact]
+    public async Task SoloMonitorAsync_InvalidatesModeIndexesOnDeactivatedPaths()
+    {
+        SetupTwoMonitorConfig();
+        var service = CreateService();
+
+        DISPLAYCONFIG_PATH_INFO[]? appliedPaths = null;
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .Invokes((DISPLAYCONFIG_PATH_INFO[] p, DISPLAYCONFIG_MODE_INFO[] _, SetDisplayConfigFlags _) => appliedPaths = p);
+
+        await service.SoloMonitorAsync("DEL4321");
+
+        var deactivated = appliedPaths!.First(p => p.targetInfo.id == 10);
+        deactivated.sourceInfo.modeInfoIdx.ShouldBe(DISPLAYCONFIG_PATH_MODE_IDX_INVALID);
+        deactivated.targetInfo.modeInfoIdx.ShouldBe(DISPLAYCONFIG_PATH_MODE_IDX_INVALID);
+    }
+
+    [Fact]
+    public async Task SoloMonitorAsync_InvalidatesModeIndexesOnTargetPath()
+    {
+        SetupTwoMonitorConfig();
+        var service = CreateService();
+
+        DISPLAYCONFIG_PATH_INFO[]? appliedPaths = null;
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .Invokes((DISPLAYCONFIG_PATH_INFO[] p, DISPLAYCONFIG_MODE_INFO[] _, SetDisplayConfigFlags _) => appliedPaths = p);
+
+        await service.SoloMonitorAsync("DEL4321");
+
+        var target = appliedPaths!.First(p => p.targetInfo.id == 20);
+        target.sourceInfo.modeInfoIdx.ShouldBe(DISPLAYCONFIG_PATH_MODE_IDX_INVALID);
+        target.targetInfo.modeInfoIdx.ShouldBe(DISPLAYCONFIG_PATH_MODE_IDX_INVALID);
+    }
+
+    [Fact]
     public async Task SoloMonitorAsync_UnknownId_ThrowsKeyNotFoundException()
     {
         SetupTwoMonitorConfig();
