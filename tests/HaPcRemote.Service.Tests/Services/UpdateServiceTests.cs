@@ -378,7 +378,7 @@ public class UpdateServiceTests
         // With prereleases enabled, uses /releases — array response
         var json = MakeReleasesJson(("v0.0.1-rc.1", "HaPcRemoteService-Setup-0.0.1-rc.1.exe"));
         SetupHttpResponse(json);
-        var svc = new UpdateService(_httpClientFactory, _logger, includePrereleases: true);
+        var svc = new UpdateService(_httpClientFactory, _logger, includePrereleases: () => true);
 
         var result = await svc.CheckAndApplyAsync();
 
@@ -394,12 +394,62 @@ public class UpdateServiceTests
             ("v0.0.1", "HaPcRemoteService-Setup-0.0.1.exe"),
             ("v0.0.2-rc.1", "HaPcRemoteService-Setup-0.0.2-rc.1.exe"));
         SetupHttpResponse(json);
-        var svc = new UpdateService(_httpClientFactory, _logger, includePrereleases: true);
+        var svc = new UpdateService(_httpClientFactory, _logger, includePrereleases: () => true);
 
         var result = await svc.CheckAndApplyAsync();
 
         // Both <= current → UpToDate
         result.Status.ShouldBe(UpdateStatus.UpToDate);
+    }
+
+
+    [Fact]
+    public async Task CheckAndApply_NullFunc_DefaultsToStableEndpoint()
+    {
+        var json = MakeReleaseJson("v0.0.1", "HaPcRemoteService-Setup-0.0.1.exe");
+        var handler = SetupCapturingHandler(json);
+        var svc = new UpdateService(_httpClientFactory, _logger);
+
+        await svc.CheckAndApplyAsync();
+
+        handler.RequestedUrls.ShouldHaveSingleItem();
+        handler.RequestedUrls[0].ShouldContain("/releases/latest");
+    }
+
+    [Fact]
+    public async Task CheckAndApply_FuncReturnsTrue_UsesAllReleasesEndpoint()
+    {
+        var json = MakeReleasesJson(("v0.0.1-rc.1", "HaPcRemoteService-Setup-0.0.1-rc.1.exe"));
+        var handler = SetupCapturingHandler(json);
+        var svc = new UpdateService(_httpClientFactory, _logger, includePrereleases: () => true);
+
+        await svc.CheckAndApplyAsync();
+
+        handler.RequestedUrls.ShouldHaveSingleItem();
+        handler.RequestedUrls[0].ShouldEndWith("/releases");
+    }
+
+    [Fact]
+    public async Task CheckAndApply_FuncReadDynamically_SwitchesEndpoint()
+    {
+        var includePrerelease = false;
+
+        // First call: stable
+        var stableJson = MakeReleaseJson("v0.0.1", "HaPcRemoteService-Setup-0.0.1.exe");
+        var handler1 = SetupCapturingHandler(stableJson);
+        var svc = new UpdateService(_httpClientFactory, _logger, includePrereleases: () => includePrerelease);
+
+        await svc.CheckAndApplyAsync();
+        handler1.RequestedUrls[0].ShouldContain("/releases/latest");
+
+        // Toggle to prereleases
+        includePrerelease = true;
+        var preJson = MakeReleasesJson(("v0.0.2-rc.1", "HaPcRemoteService-Setup-0.0.2-rc.1.exe"));
+        var handler2 = SetupCapturingHandler(preJson);
+
+        await svc.CheckAndApplyAsync();
+        handler2.RequestedUrls[0].ShouldEndWith("/releases");
+        handler2.RequestedUrls[0].ShouldNotContain("/releases/latest");
     }
 
     // ── Test helpers ──────────────────────────────────────────────────
@@ -410,6 +460,22 @@ public class UpdateServiceTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             var response = new HttpResponseMessage(statusCode)
+            {
+                Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+            };
+            return Task.FromResult(response);
+        }
+    }
+
+    
+    private sealed class CapturingHttpMessageHandler(string responseJson) : HttpMessageHandler
+    {
+        public List<string> RequestedUrls { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            RequestedUrls.Add(request.RequestUri?.ToString() ?? "");
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
             };
