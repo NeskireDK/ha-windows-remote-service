@@ -61,36 +61,6 @@ public static class MonitorEndpoints
                 AppJsonContext.Default.ApiResponse);
         });
 
-        // ── Profile endpoints ────────────────────────────────────────
-
-        group.MapGet("/profiles", async (IMonitorService monitorService) =>
-        {
-            var profiles = await monitorService.GetProfilesAsync();
-            return Results.Json(
-                ApiResponse.Ok<List<MonitorProfile>>(profiles),
-                AppJsonContext.Default.ApiResponseListMonitorProfile);
-        });
-
-        group.MapPost("/set/{profile}", async (string profile, IMonitorService monitorService,
-            ILogger<IMonitorService> logger) =>
-        {
-            logger.LogInformation("Monitor profile '{Profile}' requested", profile);
-            await monitorService.ApplyProfileAsync(profile);
-            return Results.Json(
-                ApiResponse.Ok($"Monitor profile '{profile}' applied"),
-                AppJsonContext.Default.ApiResponse);
-        });
-
-        group.MapPost("/save/{profile}", async (string profile, IMonitorService monitorService,
-            ILogger<IMonitorService> logger) =>
-        {
-            logger.LogInformation("Save monitor profile '{Profile}' requested", profile);
-            await monitorService.SaveProfileAsync(profile);
-            return Results.Json(
-                ApiResponse.Ok($"Monitor profile '{profile}' saved"),
-                AppJsonContext.Default.ApiResponse);
-        });
-
         return group;
     }
 }

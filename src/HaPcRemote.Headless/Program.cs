@@ -36,7 +36,6 @@ builder.Services.PostConfigure<PcRemoteOptions>(options =>
 {
     var baseDir = AppContext.BaseDirectory;
     options.ToolsPath = ResolveRelativePath(options.ToolsPath, baseDir);
-    options.ProfilesPath = ResolveRelativePath(options.ProfilesPath, baseDir);
     foreach (var app in options.Apps.Values)
     {
         if (!string.IsNullOrEmpty(app.ExePath))

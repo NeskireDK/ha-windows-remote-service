@@ -44,17 +44,6 @@ public class MonitorEndpointTests : IntegrationTestBase
     }
 
     [Fact]
-    [Trait("Category", "ReadOnly")]
-    public async Task GetProfiles_ReturnsList()
-    {
-        var response = await GetAsync<List<MonitorProfile>>("/api/monitor/profiles");
-
-        response.Success.ShouldBeTrue();
-        // List may be empty if no profiles are configured — that's fine
-        response.Data.ShouldNotBeNull();
-    }
-
-    [Fact]
     [Trait("Category", "Mutating")]
     public async Task EnableMonitor_ValidId_ReturnsOk()
     {

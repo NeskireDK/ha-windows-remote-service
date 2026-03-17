@@ -310,17 +310,6 @@ internal sealed class WindowsMonitorService : IMonitorService
         }
     }
 
-    // ── Profiles (not supported) ──────────────────────────────────────
-
-    public Task<List<MonitorProfile>> GetProfilesAsync() =>
-        Task.FromResult(new List<MonitorProfile>());
-
-    public Task ApplyProfileAsync(string profileName) =>
-        throw new NotSupportedException("Monitor profiles are not supported with the native display API.");
-
-    public Task SaveProfileAsync(string profileName) =>
-        throw new NotSupportedException("Monitor profiles are not supported with the native display API.");
-
     // ── Helpers ────────────────────────────────────────────────────────
 
     internal void InvalidateCache()

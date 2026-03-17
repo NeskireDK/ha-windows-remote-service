@@ -62,18 +62,4 @@ public class MonitorEndpointTests : EndpointTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
-    [Fact]
-    public async Task GetProfiles_ReturnsEmptyList()
-    {
-        A.CallTo(() => MonitorService.GetProfilesAsync()).Returns(new List<MonitorProfile>());
-        using var client = CreateClient();
-
-        var response = await client.GetAsync("/api/monitor/profiles");
-
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var json = await response.Content.ReadFromJsonAsync<ApiResponse<List<MonitorProfile>>>(
-            AppJsonContext.Default.ApiResponseListMonitorProfile);
-        json.ShouldNotBeNull();
-        json.Data.ShouldNotBeNull();
-    }
 }

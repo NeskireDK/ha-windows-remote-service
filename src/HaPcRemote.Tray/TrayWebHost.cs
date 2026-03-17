@@ -43,8 +43,6 @@ internal static class TrayWebHost
             var baseDir = AppContext.BaseDirectory;
             if (!Path.IsPathRooted(options.ToolsPath))
                 options.ToolsPath = Path.GetFullPath(options.ToolsPath, baseDir);
-            if (!Path.IsPathRooted(options.ProfilesPath))
-                options.ProfilesPath = Path.GetFullPath(options.ProfilesPath, ConfigPaths.GetWritableConfigDir());
             foreach (var app in options.Apps.Values)
             {
                 if (!string.IsNullOrEmpty(app.ExePath) && !Path.IsPathRooted(app.ExePath))

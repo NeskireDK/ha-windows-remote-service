@@ -498,34 +498,6 @@ public class WindowsMonitorServiceTests
         await Should.ThrowAsync<KeyNotFoundException>(() => service.SoloMonitorAsync("UNKNOWN"));
     }
 
-    // ── Profiles (not supported) ──────────────────────────────────────
-
-    [Fact]
-    public async Task GetProfilesAsync_ReturnsEmptyList()
-    {
-        var service = CreateService();
-
-        var profiles = await service.GetProfilesAsync();
-
-        profiles.ShouldBeEmpty();
-    }
-
-    [Fact]
-    public async Task ApplyProfileAsync_ThrowsNotSupportedException()
-    {
-        var service = CreateService();
-
-        await Should.ThrowAsync<NotSupportedException>(() => service.ApplyProfileAsync("any"));
-    }
-
-    [Fact]
-    public async Task SaveProfileAsync_ThrowsNotSupportedException()
-    {
-        var service = CreateService();
-
-        await Should.ThrowAsync<NotSupportedException>(() => service.SaveProfileAsync("any"));
-    }
-
     // ── FormatEdidId ──────────────────────────────────────────────────
 
     [Theory]

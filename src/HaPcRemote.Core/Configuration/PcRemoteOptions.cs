@@ -7,7 +7,7 @@ public sealed class PcRemoteOptions
     public int Port { get; set; } = 5000;
     public AuthOptions Auth { get; set; } = new();
     public string ToolsPath { get; set; } = "./tools";
-    public string ProfilesPath { get; set; } = "./monitor-profiles";
+
     public Dictionary<string, AppDefinitionOptions> Apps { get; set; } = new();
     public Dictionary<string, ModeConfig> Modes { get; set; } = new();
     public PowerSettings Power { get; set; } = new();
@@ -35,7 +35,6 @@ public sealed class SteamConfig
 public sealed class ModeConfig
 {
     public string? AudioDevice { get; set; }
-    public string? MonitorProfile { get; set; }
     public string? SoloMonitor { get; set; }
     public int? Volume { get; set; }
     public string? LaunchApp { get; set; }

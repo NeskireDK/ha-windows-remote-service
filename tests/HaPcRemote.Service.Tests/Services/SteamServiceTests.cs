@@ -820,7 +820,7 @@ public class SteamServiceTests
             Steam = new SteamConfig { DefaultPcMode = "couch" },
             Modes = new Dictionary<string, ModeConfig>
             {
-                ["couch"] = new() { LaunchApp = "steam-bigpicture", MonitorProfile = "tv" }
+                ["couch"] = new() { LaunchApp = "steam-bigpicture", SoloMonitor = "tv" }
             }
         };
         var service = CreateService(options);
@@ -843,7 +843,7 @@ public class SteamServiceTests
             Steam = new SteamConfig { DefaultPcMode = "desktop" },
             Modes = new Dictionary<string, ModeConfig>
             {
-                ["desktop"] = new() { MonitorProfile = "dual", AudioDevice = "Speakers" }
+                ["desktop"] = new() { SoloMonitor = "dual", AudioDevice = "Speakers" }
             }
         };
         var service = CreateService(options);
