@@ -14,6 +14,7 @@ internal sealed class GeneralTab : TabPage, ISettingsTab
     private readonly ToolTip _toolTip = new();
     private readonly ComboBox _logLevelCombo;
     private readonly CheckBox _autoUpdateCheck;
+    private readonly CheckBox _includePrereleasesCheck;
     private readonly NumericUpDown _portInput;
     private readonly Label _portStatusLabel;
     private readonly Button _portSaveButton;
@@ -148,15 +149,20 @@ internal sealed class GeneralTab : TabPage, ISettingsTab
             AutoSize = true,
             Checked = settings.AutoUpdate
         };
-        _toolTip.SetToolTip(_autoUpdateCheck,
-            "Automatically download and install new service releases from GitHub.\n" +
-            "The tray icon will notify you before restarting.");
+        _includePrereleasesCheck = new CheckBox
+        {
+            Text = "Include Prereleases",
+            ForeColor = Color.White,
+            AutoSize = true,
+            Checked = settings.IncludePrereleases
+        };
 
         var autoUpdatePanel = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, AutoSize = true };
         autoUpdatePanel.Controls.Add(_autoUpdateCheck);
+        autoUpdatePanel.Controls.Add(_includePrereleasesCheck);
         autoUpdatePanel.Controls.Add(MakeHelpIcon(_toolTip,
-            "Automatically download and install new service releases from GitHub.\n" +
-            "The tray icon will notify you before restarting."));
+            "Auto Update: Automatically download and install new service releases from GitHub.\n" +
+            "Include Prereleases: Also check for pre-release versions (e.g. v1.7.0-rc.1)."));
 
         layout.Controls.Add(new Label { AutoSize = true }, 0, row);
         layout.Controls.Add(autoUpdatePanel, 1, row++);
@@ -303,6 +309,7 @@ internal sealed class GeneralTab : TabPage, ISettingsTab
         var s = TraySettings.Load();
         s.LogLevel = level;
         s.AutoUpdate = _autoUpdateCheck.Checked;
+        s.IncludePrereleases = _includePrereleasesCheck.Checked;
         s.Save();
     }
 
@@ -317,5 +324,6 @@ internal sealed class GeneralTab : TabPage, ISettingsTab
             _ => "Warning"
         };
         _autoUpdateCheck.Checked = s.AutoUpdate;
+        _includePrereleasesCheck.Checked = s.IncludePrereleases;
     }
 }

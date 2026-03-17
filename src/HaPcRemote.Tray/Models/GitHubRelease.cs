@@ -21,4 +21,5 @@ internal sealed class GitHubAsset
 }
 
 [JsonSerializable(typeof(GitHubRelease))]
+[JsonSerializable(typeof(List<GitHubRelease>))]
 internal partial class GitHubJsonContext : JsonSerializerContext;

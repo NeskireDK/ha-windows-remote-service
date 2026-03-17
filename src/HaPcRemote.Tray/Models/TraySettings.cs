@@ -7,6 +7,7 @@ namespace HaPcRemote.Tray.Models;
 internal sealed class TraySettings
 {
     public bool AutoUpdate { get; set; } = false;
+    public bool IncludePrereleases { get; set; } = false;
     public string LogLevel { get; set; } = "Warning";
 
     public int SettingsWidth { get; set; }

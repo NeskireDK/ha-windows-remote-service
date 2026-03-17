@@ -38,6 +38,18 @@ public class UpdateServiceTests
 
     private static string MakeReleaseJson(string tagName, string? assetName = null, string? downloadUrl = null)
     {
+        var release = MakeReleaseObject(tagName, assetName, downloadUrl);
+        return JsonSerializer.Serialize(release);
+    }
+
+    private static string MakeReleasesJson(params (string tagName, string? assetName)[] releases)
+    {
+        var list = releases.Select(r => MakeReleaseObject(r.tagName, r.assetName)).ToArray();
+        return JsonSerializer.Serialize(list);
+    }
+
+    private static object MakeReleaseObject(string tagName, string? assetName = null, string? downloadUrl = null)
+    {
         var assets = new List<object>();
         if (assetName is not null)
         {
@@ -48,11 +60,7 @@ public class UpdateServiceTests
             });
         }
 
-        return JsonSerializer.Serialize(new
-        {
-            tag_name = tagName,
-            assets
-        });
+        return new { tag_name = tagName, assets };
     }
 
     // ── GetCurrentVersion ─────────────────────────────────────────────
@@ -332,6 +340,66 @@ public class UpdateServiceTests
         // The service catches generic exceptions, so it returns Failed
         var result = await task;
         result.Status.ShouldBe(UpdateStatus.Failed);
+    }
+
+    // ── IsPrerelease ───────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("v1.7.0-rc.1", true)]
+    [InlineData("v1.7.0-beta", true)]
+    [InlineData("v1.7.0-alpha.2", true)]
+    [InlineData("1.7.0-rc.1", true)]
+    [InlineData("v1.7.0", false)]
+    [InlineData("v1.7.0.0", false)]
+    [InlineData("1.7.0", false)]
+    public void IsPrerelease_DetectsHyphenInCleanedTag(string tag, bool expected)
+    {
+        UpdateService.IsPrerelease(tag).ShouldBe(expected);
+    }
+
+    // ── Prerelease filtering ─────────────────────────────────────────
+
+    [Fact]
+    public async Task CheckAndApply_Default_UsesLatestEndpoint()
+    {
+        // Default (no prereleases) uses /releases/latest — single object response
+        var json = MakeReleaseJson("v0.0.1", "HaPcRemoteService-Setup-0.0.1.exe");
+        SetupHttpResponse(json);
+        var svc = CreateService();
+
+        var result = await svc.CheckAndApplyAsync();
+
+        result.Status.ShouldBe(UpdateStatus.UpToDate);
+    }
+
+    [Fact]
+    public async Task CheckAndApply_WithPrereleases_UsesReleasesEndpoint()
+    {
+        // With prereleases enabled, uses /releases — array response
+        var json = MakeReleasesJson(("v0.0.1-rc.1", "HaPcRemoteService-Setup-0.0.1-rc.1.exe"));
+        SetupHttpResponse(json);
+        var svc = new UpdateService(_httpClientFactory, _logger, includePrereleases: true);
+
+        var result = await svc.CheckAndApplyAsync();
+
+        // v0.0.1 <= current → UpToDate (but prerelease was NOT filtered out)
+        result.Status.ShouldBe(UpdateStatus.UpToDate);
+    }
+
+    [Fact]
+    public async Task CheckAndApply_WithPrereleases_SkipsStableFindsPrerelease()
+    {
+        // Prerelease v0.0.2-rc.1 comes after stable v0.0.1 — both pass through filter
+        var json = MakeReleasesJson(
+            ("v0.0.1", "HaPcRemoteService-Setup-0.0.1.exe"),
+            ("v0.0.2-rc.1", "HaPcRemoteService-Setup-0.0.2-rc.1.exe"));
+        SetupHttpResponse(json);
+        var svc = new UpdateService(_httpClientFactory, _logger, includePrereleases: true);
+
+        var result = await svc.CheckAndApplyAsync();
+
+        // Both <= current → UpToDate
+        result.Status.ShouldBe(UpdateStatus.UpToDate);
     }
 
     // ── Test helpers ──────────────────────────────────────────────────

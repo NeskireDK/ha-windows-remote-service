@@ -19,26 +19,26 @@ internal sealed class UpdateChecker(ILogger<UpdateChecker> logger)
     /// <summary>
     /// Checks GitHub for a newer release. Returns null if up-to-date or on error.
     /// </summary>
-    public async Task<ReleaseInfo?> CheckAsync(CancellationToken ct = default)
+    public async Task<ReleaseInfo?> CheckAsync(bool includePrereleases = false, CancellationToken ct = default)
     {
         try
         {
-            var url = $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases/latest";
-            var release = await Http.GetFromJsonAsync(url, GitHubJsonContext.Default.GitHubRelease, ct);
-            if (release is null) return null;
-
             var currentVersion = GetCurrentVersion();
-            var latestVersion = ParseVersion(release.TagName);
-            if (latestVersion is null || currentVersion is null || latestVersion <= currentVersion)
-                return null;
 
-            var installer = release.Assets?
-                .FirstOrDefault(a => a.Name.StartsWith(InstallerPrefix, StringComparison.OrdinalIgnoreCase)
-                                  && a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
-            if (installer is null) return null;
-
-            logger.LogInformation("Update available: {CurrentVersion} -> {LatestVersion}", currentVersion, release.TagName);
-            return new ReleaseInfo(release.TagName, installer.BrowserDownloadUrl);
+            if (includePrereleases)
+            {
+                var url = $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases";
+                var releases = await Http.GetFromJsonAsync(url, GitHubJsonContext.Default.ListGitHubRelease, ct);
+                if (releases is null) return null;
+                return FindBestRelease(releases, currentVersion, includePrereleases);
+            }
+            else
+            {
+                var url = $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases/latest";
+                var release = await Http.GetFromJsonAsync(url, GitHubJsonContext.Default.GitHubRelease, ct);
+                if (release is null) return null;
+                return FindBestRelease([release], currentVersion, includePrereleases);
+            }
         }
         catch (HttpRequestException ex)
         {
@@ -50,6 +50,35 @@ internal sealed class UpdateChecker(ILogger<UpdateChecker> logger)
             logger.LogWarning(ex, "Update check failed");
             return null;
         }
+    }
+
+    internal ReleaseInfo? FindBestRelease(List<GitHubRelease> releases, Version? currentVersion, bool includePrereleases)
+    {
+        foreach (var release in releases)
+        {
+            if (!includePrereleases && IsPrerelease(release.TagName))
+                continue;
+
+            var latestVersion = ParseVersion(release.TagName);
+            if (latestVersion is null || currentVersion is null || latestVersion <= currentVersion)
+                continue;
+
+            var installer = release.Assets?
+                .FirstOrDefault(a => a.Name.StartsWith(InstallerPrefix, StringComparison.OrdinalIgnoreCase)
+                                  && a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
+            if (installer is null) continue;
+
+            logger.LogInformation("Update available: {CurrentVersion} -> {LatestVersion}", currentVersion, release.TagName);
+            return new ReleaseInfo(release.TagName, installer.BrowserDownloadUrl);
+        }
+
+        return null;
+    }
+
+    internal static bool IsPrerelease(string tagName)
+    {
+        var cleaned = tagName.TrimStart('v');
+        return cleaned.Contains('-');
     }
 
     /// <summary>
@@ -113,6 +142,9 @@ internal sealed class UpdateChecker(ILogger<UpdateChecker> logger)
     private static Version? ParseVersion(string tag)
     {
         var cleaned = tag.TrimStart('v');
+        // Strip prerelease suffix (e.g. "1.7.0-rc.1" → "1.7.0")
+        var dashIdx = cleaned.IndexOf('-');
+        if (dashIdx >= 0) cleaned = cleaned[..dashIdx];
         if (!Version.TryParse(cleaned, out var v)) return null;
         // Normalize to 3-component so 0.7 == 0.7.0
         return v.Build < 0 ? new Version(v.Major, v.Minor, 0) : v;

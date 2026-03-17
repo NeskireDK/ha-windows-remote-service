@@ -270,7 +270,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _updateMenuItem.Text = "Checking...";
         }
 
-        var release = await _updateChecker.CheckAsync(_cts.Token);
+        var settings = TraySettings.Load();
+        var release = await _updateChecker.CheckAsync(settings.IncludePrereleases, _cts.Token);
 
         if (release is null)
         {

@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 
 namespace HaPcRemote.Service.Services;
 
-public sealed class UpdateService(IHttpClientFactory httpClientFactory, ILogger<UpdateService> logger) : IUpdateService
+public sealed class UpdateService(IHttpClientFactory httpClientFactory, ILogger<UpdateService> logger, bool includePrereleases = false) : IUpdateService
 {
     private const string RepoOwner = "NeskireDK";
     private const string RepoName = "ha-pc-remote-service";
@@ -70,21 +70,50 @@ public sealed class UpdateService(IHttpClientFactory httpClientFactory, ILogger<
     private async Task<ReleaseInfo?> CheckForUpdateAsync(Version? currentVersion, CancellationToken ct)
     {
         using var client = CreateHttpClient();
-        var url = $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases/latest";
-        var release = await client.GetFromJsonAsync(url, UpdateJsonContext.Default.GitHubReleaseDto, ct);
-        if (release is null) return null;
 
-        var latestVersion = ParseVersion(release.TagName);
-        if (latestVersion is null || currentVersion is null || latestVersion <= currentVersion)
-            return null;
+        if (includePrereleases)
+        {
+            var url = $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases";
+            var releases = await client.GetFromJsonAsync(url, UpdateJsonContext.Default.ListGitHubReleaseDto, ct);
+            if (releases is null) return null;
+            return FindBestRelease(releases, currentVersion);
+        }
+        else
+        {
+            var url = $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases/latest";
+            var release = await client.GetFromJsonAsync(url, UpdateJsonContext.Default.GitHubReleaseDto, ct);
+            if (release is null) return null;
+            return FindBestRelease([release], currentVersion);
+        }
+    }
 
-        var installer = release.Assets?
-            .FirstOrDefault(a => a.Name.StartsWith(InstallerPrefix, StringComparison.OrdinalIgnoreCase)
-                              && a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
-        if (installer is null) return null;
+    private ReleaseInfo? FindBestRelease(List<GitHubReleaseDto> releases, Version? currentVersion)
+    {
+        foreach (var release in releases)
+        {
+            if (!includePrereleases && IsPrerelease(release.TagName))
+                continue;
 
-        logger.LogInformation("Update available: {CurrentVersion} -> {LatestVersion}", currentVersion, release.TagName);
-        return new ReleaseInfo(release.TagName, installer.BrowserDownloadUrl);
+            var latestVersion = ParseVersion(release.TagName);
+            if (latestVersion is null || currentVersion is null || latestVersion <= currentVersion)
+                continue;
+
+            var installer = release.Assets?
+                .FirstOrDefault(a => a.Name.StartsWith(InstallerPrefix, StringComparison.OrdinalIgnoreCase)
+                                  && a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
+            if (installer is null) continue;
+
+            logger.LogInformation("Update available: {CurrentVersion} -> {LatestVersion}", currentVersion, release.TagName);
+            return new ReleaseInfo(release.TagName, installer.BrowserDownloadUrl);
+        }
+
+        return null;
+    }
+
+    internal static bool IsPrerelease(string tagName)
+    {
+        var cleaned = tagName.TrimStart('v');
+        return cleaned.Contains('-');
     }
 
     private async Task<bool> DownloadAndInstallAsync(ReleaseInfo release, CancellationToken ct)
@@ -123,6 +152,9 @@ public sealed class UpdateService(IHttpClientFactory httpClientFactory, ILogger<
     private static Version? ParseVersion(string tag)
     {
         var cleaned = tag.TrimStart('v');
+        // Strip prerelease suffix (e.g. "1.7.0-rc.1" → "1.7.0")
+        var dashIdx = cleaned.IndexOf('-');
+        if (dashIdx >= 0) cleaned = cleaned[..dashIdx];
         if (!Version.TryParse(cleaned, out var v)) return null;
         return v.Build < 0 ? new Version(v.Major, v.Minor, 0) : v;
     }
@@ -158,4 +190,5 @@ internal sealed class GitHubAssetDto
 }
 
 [JsonSerializable(typeof(GitHubReleaseDto))]
+[JsonSerializable(typeof(List<GitHubReleaseDto>))]
 internal sealed partial class UpdateJsonContext : JsonSerializerContext;
