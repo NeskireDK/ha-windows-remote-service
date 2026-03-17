@@ -134,14 +134,14 @@ public sealed partial class LinuxMonitorService(
     public async Task SoloMonitorAsync(string id)
     {
         var monitors = await GetMonitorsAsync();
-        var target = FindMonitor(monitors, id);
+        var target = MonitorMatchHelper.FindMonitor(monitors, id);
 
         // Enable the target
         await cliRunner.RunAsync("xrandr", ["--output", target.Name, "--auto", "--primary"]);
         await Task.Delay(500);
 
         // Disable all others
-        foreach (var m in monitors.Where(m => !MatchesId(m, id)))
+        foreach (var m in monitors.Where(m => !MonitorMatchHelper.MatchesId(m, id)))
         {
             if (m.IsActive)
             {
@@ -272,18 +272,8 @@ public sealed partial class LinuxMonitorService(
     private async Task<MonitorInfo> ResolveMonitorAsync(string id)
     {
         var monitors = await GetMonitorsAsync();
-        return FindMonitor(monitors, id);
+        return MonitorMatchHelper.FindMonitor(monitors, id);
     }
-
-    internal static MonitorInfo FindMonitor(List<MonitorInfo> monitors, string id)
-    {
-        return monitors.Find(m => MatchesId(m, id))
-            ?? throw new KeyNotFoundException($"Monitor '{id}' not found.");
-    }
-
-    private static bool MatchesId(MonitorInfo m, string id) =>
-        string.Equals(m.Name, id, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(m.MonitorId, id, StringComparison.OrdinalIgnoreCase);
 
     // xrandr --listmonitors output example:
     // Monitors: 2

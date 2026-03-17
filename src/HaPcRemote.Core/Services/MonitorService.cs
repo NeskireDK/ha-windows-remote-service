@@ -159,7 +159,7 @@ public class MonitorService(IOptionsMonitor<PcRemoteOptions> options, ICliRunner
 
         // Verify the change took effect
         var updated = await GetMonitorsAsync();
-        var target = updated.Find(m => MatchesId(m, id));
+        var target = updated.Find(m => MonitorMatchHelper.MatchesId(m, id));
         if (target is not null && !target.IsPrimary)
             logger.LogWarning("SetPrimary '{Id}' completed but monitor is still not primary — MultiMonitorTool may have silently failed", id);
     }
@@ -167,7 +167,7 @@ public class MonitorService(IOptionsMonitor<PcRemoteOptions> options, ICliRunner
     public async Task SoloMonitorAsync(string id)
     {
         var monitors = await GetMonitorsAsync();
-        var target = FindMonitor(monitors, id);
+        var target = MonitorMatchHelper.FindMonitor(monitors, id);
 
         logger.LogInformation("Solo monitor: {Name} ({Id}), currently active={Active}, primary={Primary}",
             target.Name, target.MonitorId, target.IsActive, target.IsPrimary);
@@ -186,7 +186,7 @@ public class MonitorService(IOptionsMonitor<PcRemoteOptions> options, ICliRunner
         await Task.Delay(500);
 
         // Step 3: disable all other monitors
-        foreach (var m in monitors.Where(m => !MatchesId(m, id)))
+        foreach (var m in monitors.Where(m => !MonitorMatchHelper.MatchesId(m, id)))
         {
             if (m.IsActive)
             {
@@ -201,7 +201,7 @@ public class MonitorService(IOptionsMonitor<PcRemoteOptions> options, ICliRunner
         // Verify the result
         var updated = await GetMonitorsAsync();
         var activeMonitors = updated.Where(m => m.IsActive).ToList();
-        if (activeMonitors.Count != 1 || !MatchesId(activeMonitors[0], id))
+        if (activeMonitors.Count != 1 || !MonitorMatchHelper.MatchesId(activeMonitors[0], id))
         {
             var activeNames = string.Join(", ", activeMonitors.Select(m => $"{m.Name} ({m.MonitorId})"));
             logger.LogWarning("Solo monitor '{Id}' may have failed — active monitors after operation: [{Active}]", id, activeNames);
@@ -284,19 +284,7 @@ public class MonitorService(IOptionsMonitor<PcRemoteOptions> options, ICliRunner
     private async Task<MonitorInfo> ResolveMonitorAsync(string id)
     {
         var monitors = await GetMonitorsAsync();
-        return FindMonitor(monitors, id);
+        return MonitorMatchHelper.FindMonitor(monitors, id);
     }
-
-    internal static MonitorInfo FindMonitor(List<MonitorInfo> monitors, string id)
-    {
-        return monitors.Find(m => MatchesId(m, id))
-            ?? throw new KeyNotFoundException($"Monitor '{id}' not found.");
-    }
-
-    private static bool MatchesId(MonitorInfo m, string id) =>
-        string.Equals(m.Name, id, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(m.MonitorId, id, StringComparison.OrdinalIgnoreCase)
-        || (!string.IsNullOrEmpty(m.SerialNumber)
-            && string.Equals(m.SerialNumber, id, StringComparison.OrdinalIgnoreCase));
 
 }
