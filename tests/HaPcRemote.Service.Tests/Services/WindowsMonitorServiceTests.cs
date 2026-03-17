@@ -630,6 +630,113 @@ public class WindowsMonitorServiceTests
         Should.Throw<KeyNotFoundException>(() => WindowsMonitorService.FindMonitor([], "GSM59A4"));
     }
 
+    // ── EDID collision (identical monitors) ─────────────────────────────
+
+    private void SetupIdenticalMonitors()
+    {
+        var paths = new[]
+        {
+            MakeActivePath(Adapter1, targetId: 10, sourceId: 0, sourceModeIdx: 0, targetModeIdx: 1),
+            MakeActivePath(Adapter1, targetId: 20, sourceId: 1, sourceModeIdx: 2, targetModeIdx: 3),
+        };
+
+        var modes = new[]
+        {
+            MakeSourceMode(Adapter1, 0, 2560, 1440, 0, 0),
+            MakeTargetMode(Adapter1, 10, 144000, 1000),
+            MakeSourceMode(Adapter1, 1, 2560, 1440, 2560, 0),
+            MakeTargetMode(Adapter1, 20, 144000, 1000),
+        };
+
+        A.CallTo(() => _api.QueryConfig(A<QueryDisplayConfigFlags>._)).Returns((paths, modes));
+
+        // Same EDID for both — identical manufacturer + product code
+        A.CallTo(() => _api.GetTargetDeviceInfo(Adapter1, 10)).Returns(("LG ULTRAGEAR", (ushort)0x6D1E, (ushort)0x59A4));
+        A.CallTo(() => _api.GetTargetDeviceInfo(Adapter1, 20)).Returns(("LG ULTRAGEAR", (ushort)0x6D1E, (ushort)0x59A4));
+
+        A.CallTo(() => _api.GetSourceGdiName(Adapter1, 0)).Returns(@"\\.\DISPLAY1");
+        A.CallTo(() => _api.GetSourceGdiName(Adapter1, 1)).Returns(@"\\.\DISPLAY2");
+    }
+
+    [Fact]
+    public void QueryMonitors_IdenticalEdid_AssignsUniqueMonitorIds()
+    {
+        SetupIdenticalMonitors();
+        var service = CreateService();
+
+        var monitors = service.QueryMonitors();
+
+        monitors.Count.ShouldBe(2);
+        monitors[0].MonitorId.ShouldBe("GSM59A4");
+        monitors[1].MonitorId.ShouldBe("GSM59A4#2");
+    }
+
+    [Fact]
+    public void QueryMonitors_IdenticalEdid_BothResolvableById()
+    {
+        SetupIdenticalMonitors();
+        var service = CreateService();
+
+        var monitors = service.QueryMonitors();
+
+        WindowsMonitorService.FindMonitor(monitors, "GSM59A4").Name.ShouldBe(@"\\.\DISPLAY1");
+        WindowsMonitorService.FindMonitor(monitors, "GSM59A4#2").Name.ShouldBe(@"\\.\DISPLAY2");
+    }
+
+    [Fact]
+    public void QueryMonitors_IdenticalEdid_BothResolvableByGdiName()
+    {
+        SetupIdenticalMonitors();
+        var service = CreateService();
+
+        var monitors = service.QueryMonitors();
+
+        WindowsMonitorService.FindMonitor(monitors, @"\\.\DISPLAY1").MonitorId.ShouldBe("GSM59A4");
+        WindowsMonitorService.FindMonitor(monitors, @"\\.\DISPLAY2").MonitorId.ShouldBe("GSM59A4#2");
+    }
+
+    [Fact]
+    public void QueryMonitors_IdenticalEdid_ActiveReplacesInactive_KeepsBaseId()
+    {
+        // Inactive path comes first, then active path for the same target
+        var paths = new[]
+        {
+            MakeInactivePath(Adapter1, targetId: 10, sourceId: 0),
+            MakeActivePath(Adapter1, targetId: 10, sourceId: 0, sourceModeIdx: 0, targetModeIdx: 1),
+        };
+
+        var modes = new[]
+        {
+            MakeSourceMode(Adapter1, 0, 2560, 1440, 0, 0),
+            MakeTargetMode(Adapter1, 10, 144000, 1000),
+        };
+
+        A.CallTo(() => _api.QueryConfig(A<QueryDisplayConfigFlags>._)).Returns((paths, modes));
+        A.CallTo(() => _api.GetTargetDeviceInfo(Adapter1, 10)).Returns(("LG ULTRAGEAR", (ushort)0x6D1E, (ushort)0x59A4));
+        A.CallTo(() => _api.GetSourceGdiName(Adapter1, 0)).Returns(@"\\.\DISPLAY1");
+
+        var service = CreateService();
+
+        var monitors = service.QueryMonitors();
+
+        monitors.Count.ShouldBe(1);
+        monitors[0].MonitorId.ShouldBe("GSM59A4"); // Not GSM59A4#2
+        monitors[0].IsActive.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task EnableMonitorAsync_IdenticalEdid_SecondMonitor_ResolvesCorrectTarget()
+    {
+        SetupIdenticalMonitors();
+        var service = CreateService();
+
+        await service.EnableMonitorAsync("GSM59A4#2");
+
+        // Should have called ApplyConfig — verifying it didn't throw
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .MustHaveHappenedOnceExactly();
+    }
+
     // ── DISPLAYCONFIG_RATIONAL.ToHz ───────────────────────────────────
 
     [Theory]

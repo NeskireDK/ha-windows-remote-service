@@ -52,6 +52,7 @@ internal sealed class WindowsMonitorService : IMonitorService
         var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);
         var monitors = new List<MonitorInfo>();
         var seen = new HashSet<(LUID adapterId, uint targetId)>();
+        var edidCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         _targetKeys.Clear();
 
@@ -70,7 +71,14 @@ internal sealed class WindowsMonitorService : IMonitorService
                 if (existingIdx >= 0 && !monitors[existingIdx].IsActive
                     && (path.flags & DISPLAYCONFIG_PATH_FLAGS.ACTIVE) != 0)
                 {
+                    var oldId = monitors[existingIdx].MonitorId;
                     monitors.RemoveAt(existingIdx);
+                    _targetKeys.Remove(oldId);
+
+                    // Roll back the EDID count so the replacement gets the same index
+                    var oldBaseId = oldId.Contains('#') ? oldId[..oldId.IndexOf('#')] : oldId;
+                    if (edidCounts.TryGetValue(oldBaseId, out var c))
+                        edidCounts[oldBaseId] = c - 1;
                 }
                 else
                 {
@@ -99,7 +107,13 @@ internal sealed class WindowsMonitorService : IMonitorService
                 continue;
             }
 
-            var monitorId = FormatEdidId(edidMfg, edidProduct);
+            var baseId = FormatEdidId(edidMfg, edidProduct);
+            edidCounts.TryGetValue(baseId, out var count);
+            count++;
+            edidCounts[baseId] = count;
+
+            // First occurrence keeps the base ID; subsequent ones get #2, #3, etc.
+            var monitorId = count == 1 ? baseId : $"{baseId}#{count}";
             _targetKeys[monitorId] = key;
 
             int width = 0, height = 0, hz = 0;
