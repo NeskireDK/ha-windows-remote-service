@@ -266,9 +266,11 @@ internal sealed class WindowsMonitorService : IMonitorService
 
         var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);
         var targetKey = ResolveTargetKey(target);
-        uint? targetSourceModeIdx = null;
 
-        // Single pass: activate target, deactivate others, capture source mode index
+        var activeCount = 0;
+        var inactiveCount = 0;
+
+        // Single pass: activate target, deactivate others
         for (var i = 0; i < paths.Length; i++)
         {
             var isTarget = paths[i].targetInfo.adapterId == targetKey.adapterId
@@ -277,25 +279,23 @@ internal sealed class WindowsMonitorService : IMonitorService
             if (isTarget)
             {
                 paths[i].flags |= DISPLAYCONFIG_PATH_FLAGS.ACTIVE;
-                if (paths[i].sourceInfo.modeInfoIdx == DISPLAYCONFIG_PATH_MODE_IDX_INVALID)
-                    paths[i].targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
-
-                if (targetSourceModeIdx is null
-                    && paths[i].sourceInfo.modeInfoIdx != DISPLAYCONFIG_PATH_MODE_IDX_INVALID
-                    && paths[i].sourceInfo.modeInfoIdx < modes.Length)
-                {
-                    targetSourceModeIdx = paths[i].sourceInfo.modeInfoIdx;
-                }
+                // Let Windows pick best mode
+                paths[i].sourceInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+                paths[i].targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+                activeCount++;
             }
             else
             {
                 paths[i].flags &= ~DISPLAYCONFIG_PATH_FLAGS.ACTIVE;
+                // Invalidate mode indices for deactivated paths
+                paths[i].sourceInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+                paths[i].targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+                inactiveCount++;
             }
         }
 
-        // Set the target's source mode position to (0,0) so it becomes primary
-        if (targetSourceModeIdx.HasValue)
-            modes[targetSourceModeIdx.Value].info.sourceMode.position = default;
+        _logger.LogDebug("Solo applying: {Active} active, {Inactive} inactive paths for target {Id}",
+            activeCount, inactiveCount, target.MonitorId);
 
         Apply(paths, modes);
         InvalidateCache();
