@@ -459,14 +459,13 @@ public class SteamServiceTests
     }
 
     [Fact]
-    public async Task GetGamesAsync_EmptySteamPath_Throws()
+    public async Task GetGamesAsync_NonExistentPath_ReturnsEmpty()
     {
-        A.CallTo(() => _platform.GetSteamPath()).Returns(string.Empty);
+        // GetSteamPath returns a non-null but non-existent path — libraryfolders.vdf won't exist
+        // so LoadInstalledGames returns empty list without throwing
+        A.CallTo(() => _platform.GetSteamPath()).Returns("C:\\FakeNonExistentSteamPath_12345");
         var service = CreateService();
 
-        // GetSteamPath returns empty string — treated as non-null but libraryfolders.vdf won't exist
-        // so should return empty list, not throw
-        A.CallTo(() => _platform.GetSteamPath()).Returns("C:\\FakeNonExistentSteamPath_12345");
         var result = await service.GetGamesAsync();
 
         result.ShouldBeEmpty();
