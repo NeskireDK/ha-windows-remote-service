@@ -18,12 +18,12 @@ public class SteamServiceTests
     private readonly IHttpClientFactory _httpClientFactory = A.Fake<IHttpClientFactory>();
     private readonly IEmulatorTracker _emulatorTracker = A.Fake<IEmulatorTracker>();
 
-    private SteamService CreateService(PcRemoteOptions? options = null)
+    private SteamService CreateService(PcRemoteOptions? options = null, Func<int, Task>? delay = null)
     {
         options ??= new PcRemoteOptions();
         var monitor = A.Fake<IOptionsMonitor<PcRemoteOptions>>();
         A.CallTo(() => monitor.CurrentValue).Returns(options);
-        return new SteamService(_platform, _modeService, monitor, _httpClientFactory, _emulatorTracker, _logger);
+        return new SteamService(_platform, _modeService, monitor, _httpClientFactory, _emulatorTracker, _logger, delay);
     }
 
     // ── ParseLibraryFolders tests (static) ───────────────────────────
@@ -823,16 +823,15 @@ public class SteamServiceTests
                 ["couch"] = new() { LaunchApp = "steam-bigpicture", SoloMonitor = "tv" }
             }
         };
-        var service = CreateService(options);
+        var delayMs = new List<int>();
+        var service = CreateService(options, delay: ms => { delayMs.Add(ms); return Task.CompletedTask; });
         A.CallTo(() => _platform.GetRunningAppId()).Returns(0);
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
         _ = await service.LaunchGameAsync(730);
-        sw.Stop();
 
         A.CallTo(() => _modeService.ApplyModeAsync("couch")).MustHaveHappenedOnceExactly();
         A.CallTo(() => _platform.LaunchSteamUrl("steam://rungameid/730")).MustHaveHappened();
-        sw.ElapsedMilliseconds.ShouldBeGreaterThanOrEqualTo(2500);
+        delayMs.ShouldContain(3000); // default PostLaunchDelayMs
     }
 
     [Fact]
@@ -846,16 +845,15 @@ public class SteamServiceTests
                 ["desktop"] = new() { SoloMonitor = "dual", AudioDevice = "Speakers" }
             }
         };
-        var service = CreateService(options);
+        var delayMs = new List<int>();
+        var service = CreateService(options, delay: ms => { delayMs.Add(ms); return Task.CompletedTask; });
         A.CallTo(() => _platform.GetRunningAppId()).Returns(0);
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
         _ = await service.LaunchGameAsync(730);
-        sw.Stop();
 
         A.CallTo(() => _modeService.ApplyModeAsync("desktop")).MustHaveHappenedOnceExactly();
         A.CallTo(() => _platform.LaunchSteamUrl("steam://rungameid/730")).MustHaveHappened();
-        sw.ElapsedMilliseconds.ShouldBeLessThan(8000);
+        delayMs.ShouldBeEmpty(); // no LaunchApp configured, no delay expected
     }
 
     // ── GetBindings tests ─────────────────────────────────────────
