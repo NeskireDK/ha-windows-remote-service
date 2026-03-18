@@ -3,6 +3,9 @@ using HaPcRemote.Tray.Logging;
 
 internal static class Program
 {
+    // Volatile so the STA thread and the Task.Run restart lambda always see the latest reference.
+    private static volatile WebApplication? _currentApp;
+
     [STAThread]
     private static void Main()
     {
@@ -43,7 +46,7 @@ internal static class Program
         var restartService = webApp.Services.GetRequiredService<KestrelRestartService>();
 
         // Active web application reference — swapped on each restart.
-        WebApplication currentApp = webApp;
+        _currentApp = webApp;
         var restartLock = new SemaphoreSlim(1, 1);
 
         restartService.RestartAsync = async newPort =>
@@ -53,11 +56,12 @@ internal static class Program
             {
                 KestrelStatus.Reset();
 
-                await currentApp.StopAsync(TimeSpan.FromSeconds(5));
-                await currentApp.DisposeAsync();
+                var oldApp = _currentApp!;
+                await oldApp.StopAsync(TimeSpan.FromSeconds(5));
+                await oldApp.DisposeAsync();
 
                 var newApp = TrayWebHost.Build(logProvider, restartService);
-                currentApp = newApp;
+                _currentApp = newApp;
 
                 await newApp.StartAsync();
                 KestrelStatus.SetRunning();
@@ -86,9 +90,9 @@ internal static class Program
             }
         });
 
-        Application.Run(new TrayApplicationContext(() => currentApp.Services, webCts, logProvider));
+        Application.Run(new TrayApplicationContext(() => _currentApp!.Services, webCts, logProvider));
 
         webCts.Cancel();
-        try { currentApp.StopAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult(); } catch { }
+        try { _currentApp?.StopAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult(); } catch { }
     }
 }
