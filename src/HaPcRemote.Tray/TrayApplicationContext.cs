@@ -32,7 +32,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly System.Windows.Forms.Timer _steamPollTimer;
     private readonly Icon _defaultIcon;
     private Icon? _playingIcon;
-    private IntPtr _playingIconHandle;
+    private IntPtr _playingIconHandle = IntPtr.Zero;
     private bool _isGamePlaying;
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -200,14 +200,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         g.FillEllipse(brush, bmp.Width - 7, bmp.Height - 7, 6, 6);
         var hIcon = bmp.GetHicon();
         bmp.Dispose();
-        var newIcon = Icon.FromHandle(hIcon);
         if (_playingIconHandle != IntPtr.Zero)
-        {
-            _playingIcon?.Dispose();
             DestroyIcon(_playingIconHandle);
-        }
         _playingIconHandle = hIcon;
-        _playingIcon = newIcon;
+        _playingIcon = Icon.FromHandle(hIcon);
         return _playingIcon;
     }
 
@@ -366,7 +362,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _updateLock.Dispose();
             _updateTimer.Dispose();
             _steamPollTimer.Dispose();
-            _playingIcon?.Dispose();
             if (_playingIconHandle != IntPtr.Zero)
                 DestroyIcon(_playingIconHandle);
             _settingsForm?.Dispose();

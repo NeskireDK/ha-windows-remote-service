@@ -5,15 +5,18 @@ internal static class KestrelStatus
     private static readonly object _sync = new();
     private static TaskCompletionSource _started = new();
 
-    public static bool IsRunning { get; private set; }
-    public static string? Error { get; private set; }
+    private static volatile bool _isRunning;
+    private static volatile string? _error;
+
+    public static bool IsRunning => _isRunning;
+    public static string? Error => _error;
     public static Task Started => _started.Task;
 
     public static void SetRunning()
     {
         lock (_sync)
         {
-            IsRunning = true;
+            _isRunning = true;
         }
         _started.TrySetResult();
     }
@@ -22,8 +25,8 @@ internal static class KestrelStatus
     {
         lock (_sync)
         {
-            IsRunning = false;
-            Error = error;
+            _isRunning = false;
+            _error = error;
         }
         _started.TrySetResult();
     }
@@ -33,8 +36,8 @@ internal static class KestrelStatus
     {
         lock (_sync)
         {
-            IsRunning = false;
-            Error = null;
+            _isRunning = false;
+            _error = null;
         }
         Interlocked.Exchange(ref _started, new TaskCompletionSource());
     }
