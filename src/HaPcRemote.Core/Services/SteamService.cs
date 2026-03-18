@@ -18,6 +18,7 @@ public sealed class SteamService(
     private DateTime _cacheExpiry;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(1);
     private readonly SemaphoreSlim _cacheLock = new(1, 1);
+    private IReadOnlyList<string>? _libraryFolders;
 
     public async Task<List<SteamGame>> GetGamesAsync()
     {
@@ -680,14 +681,26 @@ public sealed class SteamService(
         return crc ^ 0xFFFFFFFF;
     }
 
-    private static string? FindGameNameFromManifest(string steamPath, int appId)
+    private IReadOnlyList<string> GetLibraryFolders(string steamPath)
     {
+        if (_libraryFolders is not null)
+            return _libraryFolders;
+
         var libraryFoldersPath = Path.Combine(steamPath, "steamapps", "libraryfolders.vdf");
         if (!File.Exists(libraryFoldersPath))
-            return null;
+        {
+            _libraryFolders = [];
+            return _libraryFolders;
+        }
 
         var vdfContent = File.ReadAllText(libraryFoldersPath);
-        var libraryPaths = ParseLibraryFolders(vdfContent);
+        _libraryFolders = ParseLibraryFolders(vdfContent);
+        return _libraryFolders;
+    }
+
+    private string? FindGameNameFromManifest(string steamPath, int appId)
+    {
+        var libraryPaths = GetLibraryFolders(steamPath);
 
         foreach (var libPath in libraryPaths)
         {
@@ -717,14 +730,11 @@ public sealed class SteamService(
         return shortcuts.Find(s => s.AppId == appId)?.Name;
     }
 
-    private static List<SteamGame> LoadInstalledGames(string steamPath)
+    private List<SteamGame> LoadInstalledGames(string steamPath)
     {
-        var libraryFoldersPath = Path.Combine(steamPath, "steamapps", "libraryfolders.vdf");
-        if (!File.Exists(libraryFoldersPath))
+        var libraryPaths = GetLibraryFolders(steamPath);
+        if (libraryPaths.Count == 0)
             return [];
-
-        var vdfContent = File.ReadAllText(libraryFoldersPath);
-        var libraryPaths = ParseLibraryFolders(vdfContent);
 
         var games = new List<SteamGame>();
         foreach (var libPath in libraryPaths)
@@ -794,15 +804,10 @@ public sealed class SteamService(
             .ToList();
     }
 
-    private static string? GetGameInstallDir(string steamPath, int appId)
+    private string? GetGameInstallDir(string steamPath, int appId)
     {
         // Search all library folders, not just the main Steam path
-        var libraryFoldersPath = Path.Combine(steamPath, "steamapps", "libraryfolders.vdf");
-        if (!File.Exists(libraryFoldersPath))
-            return null;
-
-        var vdfContent = File.ReadAllText(libraryFoldersPath);
-        var libraryPaths = ParseLibraryFolders(vdfContent);
+        var libraryPaths = GetLibraryFolders(steamPath);
 
         foreach (var libPath in libraryPaths)
         {
