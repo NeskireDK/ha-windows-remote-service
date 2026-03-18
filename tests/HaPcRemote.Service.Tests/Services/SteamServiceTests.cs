@@ -30,7 +30,7 @@ public class SteamServiceTests
     [Fact]
     public void ParseLibraryFolders_ValidVdf_ReturnsLibraryPaths()
     {
-        var paths = SteamService.ParseLibraryFolders(TestData.Load("library-folders.vdf"));
+        var paths = SteamVdfParser.ParseLibraryFolders(TestData.Load("library-folders.vdf"));
 
         paths.Count.ShouldBe(2);
         paths[0].ShouldBe(@"C:\Program Files (x86)\Steam");
@@ -46,7 +46,7 @@ public class SteamServiceTests
             }
             """;
 
-        var paths = SteamService.ParseLibraryFolders(vdf);
+        var paths = SteamVdfParser.ParseLibraryFolders(vdf);
 
         paths.ShouldBeEmpty();
     }
@@ -56,7 +56,7 @@ public class SteamServiceTests
     [Fact]
     public void ParseAppManifest_ValidAcf_ReturnsGameInfo()
     {
-        var game = SteamService.ParseAppManifest(TestData.Load("app-manifest-730.acf"));
+        var game = SteamVdfParser.ParseAppManifest(TestData.Load("app-manifest-730.acf"));
 
         game.ShouldNotBeNull();
         game.AppId.ShouldBe(730);
@@ -75,7 +75,7 @@ public class SteamServiceTests
             }
             """;
 
-        var game = SteamService.ParseAppManifest(acf);
+        var game = SteamVdfParser.ParseAppManifest(acf);
 
         game.ShouldBeNull();
     }
@@ -91,7 +91,7 @@ public class SteamServiceTests
             }
             """;
 
-        var game = SteamService.ParseAppManifest(acf);
+        var game = SteamVdfParser.ParseAppManifest(acf);
 
         game.ShouldBeNull();
     }
@@ -107,7 +107,7 @@ public class SteamServiceTests
             }
             """;
 
-        var game = SteamService.ParseAppManifest(acf);
+        var game = SteamVdfParser.ParseAppManifest(acf);
 
         game.ShouldBeNull();
     }
@@ -123,7 +123,7 @@ public class SteamServiceTests
             }
             """;
 
-        var game = SteamService.ParseAppManifest(acf);
+        var game = SteamVdfParser.ParseAppManifest(acf);
 
         game.ShouldNotBeNull();
         game.LastPlayed.ShouldBe(0L);
@@ -134,7 +134,7 @@ public class SteamServiceTests
     [Fact]
     public void ParseInstallDir_ValidAcf_ReturnsInstallDir()
     {
-        var installDir = SteamService.ParseInstallDir(TestData.Load("app-manifest-730.acf"));
+        var installDir = SteamVdfParser.ParseInstallDir(TestData.Load("app-manifest-730.acf"));
 
         installDir.ShouldBe("Counter-Strike Global Offensive");
     }
@@ -150,7 +150,7 @@ public class SteamServiceTests
             }
             """;
 
-        var installDir = SteamService.ParseInstallDir(acf);
+        var installDir = SteamVdfParser.ParseInstallDir(acf);
 
         installDir.ShouldBeNull();
     }
@@ -339,7 +339,7 @@ public class SteamServiceTests
             }
             """;
 
-        var paths = SteamService.ParseLibraryFolders(vdf);
+        var paths = SteamVdfParser.ParseLibraryFolders(vdf);
 
         paths.ShouldBeEmpty();
     }
@@ -357,7 +357,7 @@ public class SteamServiceTests
             }
             """;
 
-        var paths = SteamService.ParseLibraryFolders(vdf);
+        var paths = SteamVdfParser.ParseLibraryFolders(vdf);
 
         paths.Count.ShouldBe(1);
         paths[0].ShouldBe(@"E:\Games\Steam");
@@ -375,7 +375,7 @@ public class SteamServiceTests
             }
             """;
 
-        var game = SteamService.ParseAppManifest(acf);
+        var game = SteamVdfParser.ParseAppManifest(acf);
 
         game.ShouldBeNull();
     }
@@ -392,7 +392,7 @@ public class SteamServiceTests
             }
             """;
 
-        var game = SteamService.ParseAppManifest(acf);
+        var game = SteamVdfParser.ParseAppManifest(acf);
 
         game.ShouldNotBeNull();
         game.AppId.ShouldBe(0);
@@ -411,7 +411,7 @@ public class SteamServiceTests
             }
             """;
 
-        var game = SteamService.ParseAppManifest(acf);
+        var game = SteamVdfParser.ParseAppManifest(acf);
 
         game.ShouldNotBeNull();
         game.LastPlayed.ShouldBe(1700000000L);
@@ -430,7 +430,7 @@ public class SteamServiceTests
             }
             """;
 
-        var game = SteamService.ParseAppManifest(acf);
+        var game = SteamVdfParser.ParseAppManifest(acf);
 
         game.ShouldNotBeNull();
         game.LastPlayed.ShouldBe(1708000000L);
@@ -448,7 +448,7 @@ public class SteamServiceTests
             }
             """;
 
-        var game = SteamService.ParseAppManifest(acf);
+        var game = SteamVdfParser.ParseAppManifest(acf);
 
         game.ShouldNotBeNull();
         game.LastPlayed.ShouldBe(9999999999L);
@@ -550,7 +550,7 @@ public class SteamServiceTests
     [InlineData(int.MaxValue, false)]
     public void IsShortcutAppId_ReturnsExpected(int appId, bool expected)
     {
-        SteamService.IsShortcutAppId(appId).ShouldBe(expected);
+        SteamVdfParser.IsShortcutAppId(appId).ShouldBe(expected);
     }
 
     // ── ParseShortcuts tests ───────────────────────────────────────────
@@ -559,7 +559,7 @@ public class SteamServiceTests
     public void ParseShortcuts_ValidBinaryVdf_ReturnsShortcuts()
     {
         using var stream = File.OpenRead(TestData.FilePath("shortcuts.vdf"));
-        var shortcuts = SteamService.ParseShortcuts(stream);
+        var shortcuts = SteamVdfParser.ParseShortcuts(stream);
 
         shortcuts.Count.ShouldBe(2);
 
@@ -580,7 +580,7 @@ public class SteamServiceTests
     public void ParseShortcuts_EmptyFile_ReturnsEmptyList()
     {
         using var stream = File.OpenRead(TestData.FilePath("shortcuts-empty.vdf"));
-        var shortcuts = SteamService.ParseShortcuts(stream);
+        var shortcuts = SteamVdfParser.ParseShortcuts(stream);
 
         shortcuts.ShouldBeEmpty();
     }
@@ -589,7 +589,7 @@ public class SteamServiceTests
     public void ParseShortcuts_CorruptData_ReturnsEmptyList()
     {
         using var stream = new MemoryStream([0xFF, 0xFE, 0x00, 0x01]);
-        var shortcuts = SteamService.ParseShortcuts(stream);
+        var shortcuts = SteamVdfParser.ParseShortcuts(stream);
 
         shortcuts.ShouldBeEmpty();
     }
@@ -641,17 +641,17 @@ public class SteamServiceTests
     [Fact]
     public void GenerateShortcutAppId_AlwaysNegative()
     {
-        var appId = SteamService.GenerateShortcutAppId(@"C:\Games\test.exe", "Test Game");
+        var appId = SteamVdfParser.GenerateShortcutAppId(@"C:\Games\test.exe", "Test Game");
 
         appId.ShouldBeLessThan(0);
-        SteamService.IsShortcutAppId(appId).ShouldBeTrue();
+        SteamVdfParser.IsShortcutAppId(appId).ShouldBeTrue();
     }
 
     [Fact]
     public void GenerateShortcutAppId_DeterministicForSameInputs()
     {
-        var id1 = SteamService.GenerateShortcutAppId(@"C:\Games\test.exe", "Test Game");
-        var id2 = SteamService.GenerateShortcutAppId(@"C:\Games\test.exe", "Test Game");
+        var id1 = SteamVdfParser.GenerateShortcutAppId(@"C:\Games\test.exe", "Test Game");
+        var id2 = SteamVdfParser.GenerateShortcutAppId(@"C:\Games\test.exe", "Test Game");
 
         id1.ShouldBe(id2);
     }
@@ -659,8 +659,8 @@ public class SteamServiceTests
     [Fact]
     public void GenerateShortcutAppId_DifferentForDifferentInputs()
     {
-        var id1 = SteamService.GenerateShortcutAppId(@"C:\Games\test.exe", "Test Game");
-        var id2 = SteamService.GenerateShortcutAppId(@"C:\Games\other.exe", "Other Game");
+        var id1 = SteamVdfParser.GenerateShortcutAppId(@"C:\Games\test.exe", "Test Game");
+        var id2 = SteamVdfParser.GenerateShortcutAppId(@"C:\Games\other.exe", "Other Game");
 
         id1.ShouldNotBe(id2);
     }
@@ -1054,7 +1054,7 @@ public class SteamServiceTests
         // The test VDF (shortcuts.vdf) contains two entries.
         // "Emulator Game" has LaunchOptions set in the binary VDF.
         using var stream = File.OpenRead(TestData.FilePath("shortcuts.vdf"));
-        var shortcuts = SteamService.ParseShortcuts(stream);
+        var shortcuts = SteamVdfParser.ParseShortcuts(stream);
 
         // At minimum, verify LaunchOptions is parsed (non-null) for the entry that has it
         var withLaunchOpts = shortcuts.FirstOrDefault(s => s.LaunchOptions != null);
@@ -1069,7 +1069,7 @@ public class SteamServiceTests
     [InlineData("  ", null, null)]
     public void ParseExeField_EmptyOrNull_ReturnsNulls(string? input, string? expectedExe, string? expectedArgs)
     {
-        var (exe, args) = SteamService.ParseExeField(input);
+        var (exe, args) = SteamVdfParser.ParseExeField(input);
         exe.ShouldBe(expectedExe);
         args.ShouldBe(expectedArgs);
     }
@@ -1077,7 +1077,7 @@ public class SteamServiceTests
     [Fact]
     public void ParseExeField_QuotedExeOnly_ReturnsPathNoArgs()
     {
-        var (exe, args) = SteamService.ParseExeField(@"""C:\Games\custom.exe""");
+        var (exe, args) = SteamVdfParser.ParseExeField(@"""C:\Games\custom.exe""");
         exe.ShouldBe(@"C:\Games\custom.exe");
         args.ShouldBeNull();
     }
@@ -1085,7 +1085,7 @@ public class SteamServiceTests
     [Fact]
     public void ParseExeField_QuotedExeWithArgs_SplitsCorrectly()
     {
-        var (exe, args) = SteamService.ParseExeField(@"""D:\shadps4\shadPS4.exe"" -g ""D:\shadps4\games\CUSA03173\eboot.bin""");
+        var (exe, args) = SteamVdfParser.ParseExeField(@"""D:\shadps4\shadPS4.exe"" -g ""D:\shadps4\games\CUSA03173\eboot.bin""");
         exe.ShouldBe(@"D:\shadps4\shadPS4.exe");
         args.ShouldBe(@"-g ""D:\shadps4\games\CUSA03173\eboot.bin""");
     }
@@ -1093,7 +1093,7 @@ public class SteamServiceTests
     [Fact]
     public void ParseExeField_UnquotedExe_ReturnsPath()
     {
-        var (exe, args) = SteamService.ParseExeField(@"C:\simple.exe");
+        var (exe, args) = SteamVdfParser.ParseExeField(@"C:\simple.exe");
         exe.ShouldBe(@"C:\simple.exe");
         args.ShouldBeNull();
     }
@@ -1101,7 +1101,7 @@ public class SteamServiceTests
     [Fact]
     public void ParseExeField_QuotedExeWithSimpleArgs_SplitsCorrectly()
     {
-        var (exe, args) = SteamService.ParseExeField(@"""C:\Emulators\rpcs3.exe"" --no-gui");
+        var (exe, args) = SteamVdfParser.ParseExeField(@"""C:\Emulators\rpcs3.exe"" --no-gui");
         exe.ShouldBe(@"C:\Emulators\rpcs3.exe");
         args.ShouldBe("--no-gui");
     }
