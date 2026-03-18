@@ -452,6 +452,7 @@ public sealed class SteamService(
     /// <summary>
     /// Seeds the game cache directly. Intended for test use only.
     /// </summary>
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
     internal void SetCachedGamesForTest(List<SteamGame> games)
     {
         _cachedGames = games;

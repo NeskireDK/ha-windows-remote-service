@@ -46,8 +46,10 @@ public static class HostBootstrapExtensions
             Directory.CreateDirectory(writableConfigDir);
             configPath = writableConfigPath;
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine(
+                $"[HA PC Remote] Failed to create config dir '{writableConfigDir}': {ex.Message}. Falling back to app directory.");
             configPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
         }
 

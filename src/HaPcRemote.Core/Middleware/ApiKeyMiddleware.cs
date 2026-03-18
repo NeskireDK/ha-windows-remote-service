@@ -9,8 +9,6 @@ public sealed class ApiKeyMiddleware(RequestDelegate next, ILogger<ApiKeyMiddlew
 {
     private const string ApiKeyHeaderName = "X-Api-Key";
 
-    private static readonly string[] ExemptPaths = ["/api/health"];
-
     public async Task InvokeAsync(HttpContext context, IOptionsMonitor<PcRemoteOptions> options)
     {
         var config = options.CurrentValue;
@@ -23,15 +21,9 @@ public sealed class ApiKeyMiddleware(RequestDelegate next, ILogger<ApiKeyMiddlew
 
         var path = context.Request.Path.Value ?? string.Empty;
 
-        // Artwork image requests are exempt so HA can fetch art without auth.
-        // Diagnostics endpoints under /api/steam/artwork/ are NOT exempt.
-        var isArtworkImageRequest = path.StartsWith("/api/steam/artwork/", StringComparison.OrdinalIgnoreCase)
-            && !path.EndsWith("/diagnostics", StringComparison.OrdinalIgnoreCase);
-
         // Only require auth for /api/ paths; skip non-API requests (favicon.ico, etc.)
         if (!path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase) ||
-            isArtworkImageRequest ||
-            ExemptPaths.Any(p => path.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+            IsExemptPath(path))
         {
             await next(context);
             return;
@@ -59,5 +51,18 @@ public sealed class ApiKeyMiddleware(RequestDelegate next, ILogger<ApiKeyMiddlew
         }
 
         await next(context);
+    }
+
+    private static bool IsExemptPath(string path) =>
+        path.Equals("/api/health", StringComparison.OrdinalIgnoreCase) ||
+        IsArtworkImagePath(path);
+
+    private static bool IsArtworkImagePath(string path)
+    {
+        const string prefix = "/api/steam/artwork/";
+        if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return false;
+        var segment = path[prefix.Length..];
+        return !segment.Contains('/') && int.TryParse(segment, out _);
     }
 }
