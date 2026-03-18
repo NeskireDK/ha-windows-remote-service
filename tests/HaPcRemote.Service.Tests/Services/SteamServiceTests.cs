@@ -175,15 +175,24 @@ public class SteamServiceTests
     public async Task GetRunningGame_GameRunning_CacheWarm_ReturnsGameInfo()
     {
         A.CallTo(() => _platform.GetRunningAppId()).Returns(730);
-        A.CallTo(() => _platform.GetSteamPath()).Returns(@"C:\Steam");
+        A.CallTo(() => _platform.GetSteamPath()).Returns(@"C:\FakeNonExistentSteamPath_12345");
         var service = CreateService();
-        // Warm the cache manually via GetGamesAsync (returns empty list since filesystem is fake)
-        // Then set up the cache via reflection would be complex — instead just verify the result
-        // with an empty cache: name falls back to "Unknown (730)" but appId is correct
+
+        // Pre-warm the cache with a non-empty game list so the warm-path check (_cachedGames.Count == 0) doesn't re-trigger
+        await service.GetGamesAsync();
+        InjectCachedGames(service, [new SteamGame { AppId = 730, Name = "Counter-Strike 2", LastPlayed = 0 }]);
+
+        // Reset call count tracking so we can assert the warm path doesn't reload
+        Fake.ClearRecordedCalls(_platform);
+        A.CallTo(() => _platform.GetRunningAppId()).Returns(730);
+
         var result = await service.GetRunningGameAsync();
 
         result.ShouldNotBeNull();
         result.AppId.ShouldBe(730);
+        result.Name.ShouldBe("Counter-Strike 2");
+        // Cache was warm — GetSteamPath must not have been called to reload games
+        A.CallTo(() => _platform.GetSteamPath()).MustNotHaveHappened();
     }
 
     [Fact]
