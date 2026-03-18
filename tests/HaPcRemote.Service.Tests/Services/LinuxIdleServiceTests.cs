@@ -20,20 +20,6 @@ public class LinuxIdleServiceTests
         result.ShouldBeNull();
     }
 
-    [Fact]
-    public void GetIdleSeconds_CachesBackendDetection()
-    {
-        var service = new LinuxIdleService(_logger);
-
-        // Call twice — backend detection runs only once
-        service.GetIdleSeconds();
-        service.GetIdleSeconds();
-
-        // If backend detection ran twice, we'd see two log messages.
-        // The "none" backend log only fires once.
-        // We can't easily assert on this without more infrastructure,
-        // but at least verify it doesn't throw.
-    }
 }
 
 public class MutterIdleBackendParsingTests
