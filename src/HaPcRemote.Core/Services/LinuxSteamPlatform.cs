@@ -93,9 +93,9 @@ public sealed class LinuxSteamPlatform(ILogger<LinuxSteamPlatform> logger) : ISt
             using var proc = Process.GetProcessById(processId);
             proc.Kill(entireProcessTree: true);
         }
-        catch
+        catch (Exception ex)
         {
-            // Process already exited or access denied
+            logger.LogWarning(ex, "Failed to kill process {Pid}", processId);
         }
     }
 
@@ -110,7 +110,10 @@ public sealed class LinuxSteamPlatform(ILogger<LinuxSteamPlatform> logger) : ISt
                 if (path != null)
                     paths.Add(path);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to read process path for {ProcessName}", proc.ProcessName);
+            }
             finally { proc.Dispose(); }
         }
         return paths;
@@ -145,9 +148,9 @@ public sealed class LinuxSteamPlatform(ILogger<LinuxSteamPlatform> logger) : ISt
 
                 processes.Add(new RunningProcess(pid, path, cmdLine));
             }
-            catch
+            catch (Exception ex)
             {
-                // Access denied or process exited between enumeration and read
+                logger.LogWarning(ex, "Failed to read process info for pid {Pid}", pid);
             }
         }
 

@@ -69,7 +69,10 @@ public sealed class WindowsSteamPlatform(ILogger<WindowsSteamPlatform> logger) :
                 if (path != null)
                     paths.Add(path);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to read process path for {ProcessName}", proc.ProcessName);
+            }
             finally { proc.Dispose(); }
         }
         return paths;
@@ -104,7 +107,10 @@ public sealed class WindowsSteamPlatform(ILogger<WindowsSteamPlatform> logger) :
                     if (path != null)
                         processes.Add(new RunningProcess(proc.Id, path, null));
                 }
-                catch { }
+                catch (Exception innerEx)
+                {
+                    logger.LogWarning(innerEx, "Failed to read process path for {ProcessName} during fallback", proc.ProcessName);
+                }
                 finally { proc.Dispose(); }
             }
         }
