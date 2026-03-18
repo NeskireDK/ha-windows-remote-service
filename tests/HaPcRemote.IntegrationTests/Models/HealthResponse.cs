@@ -4,6 +4,7 @@ public class HealthResponse
 {
     public string Status { get; set; } = string.Empty;
     public string? MachineName { get; set; }
+    public string? Version { get; set; }
     public List<MacAddressInfo>? MacAddresses { get; set; }
 }
 
