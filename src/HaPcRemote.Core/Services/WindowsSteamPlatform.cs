@@ -8,7 +8,7 @@ using Microsoft.Win32;
 namespace HaPcRemote.Service.Services;
 
 [SupportedOSPlatform("windows")]
-public class WindowsSteamPlatform(ILogger<WindowsSteamPlatform> logger) : ISteamPlatform
+public sealed class WindowsSteamPlatform(ILogger<WindowsSteamPlatform> logger) : ISteamPlatform
 {
     public string? GetSteamPath()
     {
@@ -42,28 +42,8 @@ public class WindowsSteamPlatform(ILogger<WindowsSteamPlatform> logger) : ISteam
         }
     }
 
-    public void KillProcessesInDirectory(string directory)
-    {
-        foreach (var proc in Process.GetProcesses())
-        {
-            try
-            {
-                var path = proc.MainModule?.FileName;
-                if (path != null && path.StartsWith(directory, StringComparison.OrdinalIgnoreCase))
-                {
-                    proc.Kill(entireProcessTree: true);
-                }
-            }
-            catch
-            {
-                // Access denied for system processes, or process already exited
-            }
-            finally
-            {
-                proc.Dispose();
-            }
-        }
-    }
+    public void KillProcessesInDirectory(string directory) =>
+        SteamPlatformHelpers.KillProcessesInDirectory(directory, logger);
 
     public void KillProcess(int processId)
     {
@@ -89,7 +69,10 @@ public class WindowsSteamPlatform(ILogger<WindowsSteamPlatform> logger) : ISteam
                 if (path != null)
                     paths.Add(path);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to read process path for {ProcessName}", proc.ProcessName);
+            }
             finally { proc.Dispose(); }
         }
         return paths;
@@ -124,7 +107,10 @@ public class WindowsSteamPlatform(ILogger<WindowsSteamPlatform> logger) : ISteam
                     if (path != null)
                         processes.Add(new RunningProcess(proc.Id, path, null));
                 }
-                catch { }
+                catch (Exception innerEx)
+                {
+                    logger.LogWarning(innerEx, "Failed to read process path for {ProcessName} during fallback", proc.ProcessName);
+                }
                 finally { proc.Dispose(); }
             }
         }

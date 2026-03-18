@@ -6,7 +6,7 @@ using ValveKeyValue;
 
 namespace HaPcRemote.Service.Services;
 
-public class SteamService(
+public sealed class SteamService(
     ISteamPlatform platform,
     IModeService modeService,
     IOptionsMonitor<PcRemoteOptions> options,
@@ -19,6 +19,8 @@ public class SteamService(
     private List<SteamGame>? _cachedGames;
     private DateTime _cacheExpiry;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(1);
+    private readonly SemaphoreSlim _cacheLock = new(1, 1);
+    private IReadOnlyList<string>? _libraryFolders;
 
     public async Task<List<SteamGame>> GetGamesAsync()
     {
@@ -56,11 +58,7 @@ public class SteamService(
         }
 
         // Warm the cache if not yet populated
-        if (_cachedGames == null || _cachedGames.Count == 0)
-        {
-            try { await GetGamesAsync(); }
-            catch (InvalidOperationException) { /* Steam path unavailable, continue without cache */ }
-        }
+        await EnsureCacheWarmAsync();
 
         var name = _cachedGames?.Find(g => g.AppId == appId)?.Name;
 
@@ -84,11 +82,7 @@ public class SteamService(
     {
         var steamAppId = platform.GetRunningAppId();
 
-        if (_cachedGames == null || _cachedGames.Count == 0)
-        {
-            try { await GetGamesAsync(); }
-            catch (InvalidOperationException) { /* Steam path unavailable */ }
-        }
+        await EnsureCacheWarmAsync();
 
         var shortcuts = _cachedGames?.Where(g => g.IsShortcut && g.ExePath != null).ToList()
                         ?? [];
@@ -173,11 +167,7 @@ public class SteamService(
     private async Task<SteamRunningGame?> TryFindRunningShortcutAsync()
     {
         // Warm the cache if needed
-        if (_cachedGames == null || _cachedGames.Count == 0)
-        {
-            try { await GetGamesAsync(); }
-            catch (InvalidOperationException) { return null; }
-        }
+        await EnsureCacheWarmAsync();
 
         var shortcuts = _cachedGames?.Where(g => g.IsShortcut && g.ExePath != null).ToList();
         if (shortcuts == null || shortcuts.Count == 0)
@@ -443,6 +433,21 @@ public class SteamService(
 
     public bool IsSteamRunning() => platform.IsSteamRunning();
 
+    private async Task EnsureCacheWarmAsync()
+    {
+        await _cacheLock.WaitAsync();
+        try
+        {
+            if (_cachedGames is { Count: > 0 }) return;
+            try { await GetGamesAsync(); }
+            catch (InvalidOperationException) { /* Steam not installed */ }
+        }
+        finally
+        {
+            _cacheLock.Release();
+        }
+    }
+
     /// <summary>
     /// Seeds the game cache directly. Intended for test use only.
     /// </summary>
@@ -687,14 +692,26 @@ public class SteamService(
         return crc ^ 0xFFFFFFFF;
     }
 
-    private static string? FindGameNameFromManifest(string steamPath, int appId)
+    private IReadOnlyList<string> GetLibraryFolders(string steamPath)
     {
+        if (_libraryFolders is not null)
+            return _libraryFolders;
+
         var libraryFoldersPath = Path.Combine(steamPath, "steamapps", "libraryfolders.vdf");
         if (!File.Exists(libraryFoldersPath))
-            return null;
+        {
+            _libraryFolders = [];
+            return _libraryFolders;
+        }
 
         var vdfContent = File.ReadAllText(libraryFoldersPath);
-        var libraryPaths = ParseLibraryFolders(vdfContent);
+        _libraryFolders = ParseLibraryFolders(vdfContent);
+        return _libraryFolders;
+    }
+
+    private string? FindGameNameFromManifest(string steamPath, int appId)
+    {
+        var libraryPaths = GetLibraryFolders(steamPath);
 
         foreach (var libPath in libraryPaths)
         {
@@ -724,14 +741,11 @@ public class SteamService(
         return shortcuts.Find(s => s.AppId == appId)?.Name;
     }
 
-    private static List<SteamGame> LoadInstalledGames(string steamPath)
+    private List<SteamGame> LoadInstalledGames(string steamPath)
     {
-        var libraryFoldersPath = Path.Combine(steamPath, "steamapps", "libraryfolders.vdf");
-        if (!File.Exists(libraryFoldersPath))
+        var libraryPaths = GetLibraryFolders(steamPath);
+        if (libraryPaths.Count == 0)
             return [];
-
-        var vdfContent = File.ReadAllText(libraryFoldersPath);
-        var libraryPaths = ParseLibraryFolders(vdfContent);
 
         var games = new List<SteamGame>();
         foreach (var libPath in libraryPaths)
@@ -801,15 +815,10 @@ public class SteamService(
             .ToList();
     }
 
-    private static string? GetGameInstallDir(string steamPath, int appId)
+    private string? GetGameInstallDir(string steamPath, int appId)
     {
         // Search all library folders, not just the main Steam path
-        var libraryFoldersPath = Path.Combine(steamPath, "steamapps", "libraryfolders.vdf");
-        if (!File.Exists(libraryFoldersPath))
-            return null;
-
-        var vdfContent = File.ReadAllText(libraryFoldersPath);
-        var libraryPaths = ParseLibraryFolders(vdfContent);
+        var libraryPaths = GetLibraryFolders(steamPath);
 
         foreach (var libPath in libraryPaths)
         {
@@ -964,11 +973,7 @@ public class SteamService(
         if (steamPath == null) return null;
 
         // Warm cache if needed
-        if (_cachedGames == null || _cachedGames.Count == 0)
-        {
-            try { await GetGamesAsync(); }
-            catch (InvalidOperationException) { /* no Steam */ }
-        }
+        await EnsureCacheWarmAsync();
 
         var gameName = _cachedGames?.FirstOrDefault(g => g.AppId == appId)?.Name ?? $"Unknown ({appId})";
         return GetArtworkDiagnostics(steamPath, platform.GetSteamUserId(), appId, gameName);

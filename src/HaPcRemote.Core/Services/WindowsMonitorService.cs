@@ -363,14 +363,10 @@ internal sealed class WindowsMonitorService : IMonitorService
     }
 
     internal static MonitorInfo FindMonitor(List<MonitorInfo> monitors, string id) =>
-        monitors.Find(m => MatchesId(m, id))
-        ?? throw new KeyNotFoundException($"Monitor '{id}' not found.");
+        MonitorMatchHelper.FindMonitor(monitors, id);
 
     internal static bool MatchesId(MonitorInfo m, string id) =>
-        string.Equals(m.Name, id, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(m.MonitorId, id, StringComparison.OrdinalIgnoreCase)
-        || (!string.IsNullOrEmpty(m.SerialNumber)
-            && string.Equals(m.SerialNumber, id, StringComparison.OrdinalIgnoreCase));
+        MonitorMatchHelper.MatchesId(m, id);
 
     /// <summary>
     /// Decodes EDID manufacturer ID (big-endian compressed PNP) + product code into "GSM59A4" format.

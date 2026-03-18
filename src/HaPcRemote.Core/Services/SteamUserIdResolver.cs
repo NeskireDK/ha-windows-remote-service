@@ -22,7 +22,7 @@ internal static class SteamUserIdResolver
                 if (userId != null)
                     return userId;
             }
-            catch
+            catch (Exception)
             {
                 // Fall through to directory scan
             }

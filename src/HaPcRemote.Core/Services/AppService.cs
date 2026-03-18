@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 
 namespace HaPcRemote.Service.Services;
 
-public class AppService(
+public sealed class AppService(
     IOptionsMonitor<PcRemoteOptions> options,
     IAppLauncher appLauncher,
     IBigPictureTracker bigPictureTracker) : IAppService

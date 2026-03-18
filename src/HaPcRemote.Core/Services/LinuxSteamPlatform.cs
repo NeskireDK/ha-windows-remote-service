@@ -1,12 +1,13 @@
 using System.Diagnostics;
 using System.Runtime.Versioning;
 using HaPcRemote.Service.Models;
+using Microsoft.Extensions.Logging;
 using ValveKeyValue;
 
 namespace HaPcRemote.Service.Services;
 
 [SupportedOSPlatform("linux")]
-public sealed class LinuxSteamPlatform : ISteamPlatform
+public sealed class LinuxSteamPlatform(ILogger<LinuxSteamPlatform> logger) : ISteamPlatform
 {
     private static readonly string[] KnownSteamPaths =
     [
@@ -82,28 +83,8 @@ public sealed class LinuxSteamPlatform : ISteamPlatform
         using var process = Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
-    public void KillProcessesInDirectory(string directory)
-    {
-        foreach (var proc in Process.GetProcesses())
-        {
-            try
-            {
-                var path = proc.MainModule?.FileName;
-                if (path != null && path.StartsWith(directory, StringComparison.OrdinalIgnoreCase))
-                {
-                    proc.Kill(entireProcessTree: true);
-                }
-            }
-            catch
-            {
-                // Access denied for system processes, or process already exited
-            }
-            finally
-            {
-                proc.Dispose();
-            }
-        }
-    }
+    public void KillProcessesInDirectory(string directory) =>
+        SteamPlatformHelpers.KillProcessesInDirectory(directory, logger);
 
     public void KillProcess(int processId)
     {
@@ -112,9 +93,9 @@ public sealed class LinuxSteamPlatform : ISteamPlatform
             using var proc = Process.GetProcessById(processId);
             proc.Kill(entireProcessTree: true);
         }
-        catch
+        catch (Exception ex)
         {
-            // Process already exited or access denied
+            logger.LogWarning(ex, "Failed to kill process {Pid}", processId);
         }
     }
 
@@ -129,7 +110,10 @@ public sealed class LinuxSteamPlatform : ISteamPlatform
                 if (path != null)
                     paths.Add(path);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to read process path for {ProcessName}", proc.ProcessName);
+            }
             finally { proc.Dispose(); }
         }
         return paths;
@@ -164,9 +148,9 @@ public sealed class LinuxSteamPlatform : ISteamPlatform
 
                 processes.Add(new RunningProcess(pid, path, cmdLine));
             }
-            catch
+            catch (Exception ex)
             {
-                // Access denied or process exited between enumeration and read
+                logger.LogWarning(ex, "Failed to read process info for pid {Pid}", pid);
             }
         }
 

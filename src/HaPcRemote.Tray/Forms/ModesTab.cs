@@ -1,5 +1,6 @@
 using HaPcRemote.Service.Configuration;
 using HaPcRemote.Service.Services;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace HaPcRemote.Tray.Forms;
@@ -10,6 +11,7 @@ internal sealed class ModesTab : TabPage
     private readonly IAudioService _audioService;
     private readonly IMonitorService _monitorService;
     private readonly IOptions<PcRemoteOptions> _options;
+    private readonly ILogger<ModesTab> _logger;
 
     private readonly ListBox _modeList;
     private readonly TextBox _modeNameBox;
@@ -37,6 +39,7 @@ internal sealed class ModesTab : TabPage
         _audioService = services.GetRequiredService<IAudioService>();
         _monitorService = services.GetRequiredService<IMonitorService>();
         _options = services.GetRequiredService<IOptions<PcRemoteOptions>>();
+        _logger = services.GetRequiredService<ILogger<ModesTab>>();
 
         // Left panel: mode list + buttons
         var leftPanel = new Panel { Dock = DockStyle.Left, Width = 180, Padding = new Padding(0, 0, 10, 0) };
@@ -193,7 +196,7 @@ internal sealed class ModesTab : TabPage
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to refresh dropdowns: {ex.Message}");
+            _logger.LogError(ex, "Failed to refresh dropdowns");
         }
 
         RefreshAppDropdowns();
