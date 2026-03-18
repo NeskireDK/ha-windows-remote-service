@@ -15,9 +15,12 @@ public sealed class HostLifetimeRestartService(
     {
         _ = Task.Run(async () =>
         {
-            await Task.Delay(500);
-            logger.LogInformation("Stopping host for restart");
-            lifetime.StopApplication();
-        });
+            await Task.Delay(500, lifetime.ApplicationStopping);
+            if (!lifetime.ApplicationStopping.IsCancellationRequested)
+            {
+                logger.LogInformation("Stopping host for restart");
+                lifetime.StopApplication();
+            }
+        }, lifetime.ApplicationStopping);
     }
 }
