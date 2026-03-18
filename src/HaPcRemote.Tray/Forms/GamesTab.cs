@@ -1,5 +1,6 @@
 using HaPcRemote.Service.Configuration;
 using HaPcRemote.Service.Services;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace HaPcRemote.Tray.Forms;
@@ -10,6 +11,7 @@ internal sealed class GamesTab : TabPage, ISettingsTab
     private readonly ISteamService _steamService;
     private readonly IModeService _modeService;
     private readonly IOptionsMonitor<PcRemoteOptions> _options;
+    private readonly ILogger<GamesTab> _logger;
 
     private readonly ComboBox _defaultModeCombo;
     private readonly DataGridView _gameGrid;
@@ -27,6 +29,7 @@ internal sealed class GamesTab : TabPage, ISettingsTab
         _steamService = services.GetRequiredService<ISteamService>();
         _modeService = services.GetRequiredService<IModeService>();
         _options = services.GetRequiredService<IOptionsMonitor<PcRemoteOptions>>();
+        _logger = services.GetRequiredService<ILogger<GamesTab>>();
 
         var layout = new TableLayoutPanel
         {
@@ -192,7 +195,7 @@ internal sealed class GamesTab : TabPage, ISettingsTab
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to refresh games tab: {ex.Message}");
+            _logger.LogError(ex, "Failed to refresh games tab");
         }
     }
 
