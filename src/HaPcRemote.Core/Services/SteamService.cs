@@ -17,6 +17,7 @@ public class SteamService(
     private List<SteamGame>? _cachedGames;
     private DateTime _cacheExpiry;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(1);
+    private readonly SemaphoreSlim _cacheLock = new(1, 1);
 
     public async Task<List<SteamGame>> GetGamesAsync()
     {
@@ -54,10 +55,18 @@ public class SteamService(
         }
 
         // Warm the cache if not yet populated
-        if (_cachedGames == null || _cachedGames.Count == 0)
+        await _cacheLock.WaitAsync();
+        try
         {
-            try { await GetGamesAsync(); }
-            catch (InvalidOperationException) { /* Steam path unavailable, continue without cache */ }
+            if (_cachedGames == null || _cachedGames.Count == 0)
+            {
+                try { await GetGamesAsync(); }
+                catch (InvalidOperationException) { /* Steam path unavailable, continue without cache */ }
+            }
+        }
+        finally
+        {
+            _cacheLock.Release();
         }
 
         var name = _cachedGames?.Find(g => g.AppId == appId)?.Name;
@@ -82,10 +91,18 @@ public class SteamService(
     {
         var steamAppId = platform.GetRunningAppId();
 
-        if (_cachedGames == null || _cachedGames.Count == 0)
+        await _cacheLock.WaitAsync();
+        try
         {
-            try { await GetGamesAsync(); }
-            catch (InvalidOperationException) { /* Steam path unavailable */ }
+            if (_cachedGames == null || _cachedGames.Count == 0)
+            {
+                try { await GetGamesAsync(); }
+                catch (InvalidOperationException) { /* Steam path unavailable */ }
+            }
+        }
+        finally
+        {
+            _cacheLock.Release();
         }
 
         var shortcuts = _cachedGames?.Where(g => g.IsShortcut && g.ExePath != null).ToList()
@@ -153,6 +170,8 @@ public class SteamService(
         // If Steam reports a non-zero, non-shortcut appId, use that instead
         if (steamAppId != 0 && !IsShortcutAppId(steamAppId))
         {
+            if (result != null)
+                logger.LogDebug("Overriding shortcut diagnostic result with standard game {AppId}", steamAppId);
             var name = _cachedGames?.Find(g => g.AppId == steamAppId)?.Name ?? $"Unknown ({steamAppId})";
             result = new SteamRunningGame { AppId = steamAppId, Name = name };
         }
@@ -171,11 +190,22 @@ public class SteamService(
     private async Task<SteamRunningGame?> TryFindRunningShortcutAsync()
     {
         // Warm the cache if needed
-        if (_cachedGames == null || _cachedGames.Count == 0)
+        await _cacheLock.WaitAsync();
+        try
         {
-            try { await GetGamesAsync(); }
-            catch (InvalidOperationException) { return null; }
+            if (_cachedGames == null || _cachedGames.Count == 0)
+            {
+                try { await GetGamesAsync(); }
+                catch (InvalidOperationException) { /* Steam path unavailable, no shortcuts */ }
+            }
         }
+        finally
+        {
+            _cacheLock.Release();
+        }
+
+        if (_cachedGames == null || _cachedGames.Count == 0)
+            return null;
 
         var shortcuts = _cachedGames?.Where(g => g.IsShortcut && g.ExePath != null).ToList();
         if (shortcuts == null || shortcuts.Count == 0)
@@ -953,10 +983,18 @@ public class SteamService(
         if (steamPath == null) return null;
 
         // Warm cache if needed
-        if (_cachedGames == null || _cachedGames.Count == 0)
+        await _cacheLock.WaitAsync();
+        try
         {
-            try { await GetGamesAsync(); }
-            catch (InvalidOperationException) { /* no Steam */ }
+            if (_cachedGames == null || _cachedGames.Count == 0)
+            {
+                try { await GetGamesAsync(); }
+                catch (InvalidOperationException) { /* no Steam */ }
+            }
+        }
+        finally
+        {
+            _cacheLock.Release();
         }
 
         var gameName = _cachedGames?.FirstOrDefault(g => g.AppId == appId)?.Name ?? $"Unknown ({appId})";
