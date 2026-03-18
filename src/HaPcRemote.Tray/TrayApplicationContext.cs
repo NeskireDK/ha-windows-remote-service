@@ -26,7 +26,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly InMemoryLogProvider _logProvider;
     private readonly UpdateChecker _updateChecker;
     private readonly System.Windows.Forms.Timer _updateTimer;
-    private readonly string _profilesPath;
     private readonly int _port;
     private readonly Func<IServiceProvider> _serviceAccessor;
     private readonly System.Windows.Forms.Timer _steamPollTimer;
@@ -52,7 +51,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _logger = loggerFactory.CreateLogger<TrayApplicationContext>();
 
         var options = webServices.GetRequiredService<IOptions<PcRemoteOptions>>().Value;
-        _profilesPath = options.ProfilesPath;
         _port = options.Port;
 
         _updateChecker = new UpdateChecker(loggerFactory.CreateLogger<UpdateChecker>());
@@ -89,7 +87,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
         });
 
         _logger.LogInformation("HA PC Remote Tray {Version} started", VersionString);
-        _logger.LogInformation("Profiles path: {ProfilesPath}", _profilesPath);
         _logger.LogInformation("Tools path: {ToolsPath}", options.ToolsPath);
     }
 
@@ -101,7 +98,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add("Settings", null, OnShowSettings);
         menu.Items.Add("Show Log", null, OnShowLog);
         menu.Items.Add("Show API Key", null, OnShowApiKey);
-        menu.Items.Add("Open Profiles Folder", null, OnOpenProfilesFolder);
         menu.Items.Add("API Explorer", null, OnOpenApiExplorer);
 
         menu.Items.Add(new ToolStripSeparator());
@@ -156,19 +152,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         using var dialog = new ApiKeyDialog();
         dialog.ShowDialog();
-    }
-
-    private void OnOpenProfilesFolder(object? sender, EventArgs e)
-    {
-        try
-        {
-            Directory.CreateDirectory(_profilesPath);
-            Process.Start(new ProcessStartInfo("explorer.exe", _profilesPath) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to open profiles folder: {Path}", _profilesPath);
-        }
     }
 
     private void OnOpenApiExplorer(object? sender, EventArgs e)

@@ -25,17 +25,6 @@ public class ModeService(
 
         if (config.SoloMonitor is not null)
             await monitorService.SoloMonitorAsync(config.SoloMonitor);
-        else if (config.MonitorProfile is not null)
-        {
-            try
-            {
-                await monitorService.ApplyProfileAsync(config.MonitorProfile);
-            }
-            catch (NotSupportedException ex)
-            {
-                logger.LogWarning(ex, "Monitor profile '{Profile}' not applied — native DisplayConfig API doesn't support profiles", config.MonitorProfile);
-            }
-        }
 
         if (config.Volume.HasValue)
             await audioService.SetVolumeAsync(config.Volume.Value);

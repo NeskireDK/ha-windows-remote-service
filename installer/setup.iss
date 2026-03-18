@@ -181,11 +181,6 @@ begin
       'https://www.nirsoft.net/utils/soundvolumeview-x64.zip',
       'soundvolumeview-x64.zip', ToolsDir);
 
-    WizardForm.StatusLabel.Caption := 'Downloading MultiMonitorTool...';
-    DownloadAndExtract(
-      'https://www.nirsoft.net/utils/multimonitortool-x64.zip',
-      'multimonitortool-x64.zip', ToolsDir);
-
     // Firewall rule for Tray's Kestrel server
     WizardForm.StatusLabel.Caption := 'Adding firewall rule...';
     ExecHidden('{sys}\netsh.exe',

@@ -20,7 +20,7 @@ Used as the source of truth when wiring up ToolTip controls.
 > Select "(Don't change)" to leave the current audio device untouched.
 
 **Monitor Profile**
-> Monitor layout to apply when this mode is activated (via MultiMonitorTool).
+> Monitor layout to apply when this mode is activated.
 > Select "(Don't change)" to leave the current monitor layout untouched.
 
 **Volume**
@@ -64,11 +64,6 @@ Used as the source of truth when wiring up ToolTip controls.
 > Status of the NirSoft SoundVolumeView tool used for audio device switching.
 > Must be placed in the configured ToolsPath directory.
 > Download: https://www.nirsoft.net/utils/sound_volume_view.html
-
-**MultiMonitorTool**
-> Status of the NirSoft MultiMonitorTool used for monitor profile switching.
-> Must be placed in the configured ToolsPath directory.
-> Download: https://www.nirsoft.net/utils/multi_monitor_tool.html
 
 **Log Level**
 > Controls how much detail is written to the log.

@@ -21,11 +21,10 @@ public static class SystemStateEndpoints
             // Fire all async calls concurrently
             var audioTask = GetAudioStateAsync(audioService);
             var monitorsTask = monitorService.GetMonitorsAsync();
-            var profilesTask = GetProfileNamesAsync(monitorService);
             var steamGamesTask = steamService.GetGamesAsync();
             var runningGameTask = steamService.GetRunningGameAsync();
 
-            try { await Task.WhenAll(audioTask, monitorsTask, profilesTask, steamGamesTask, runningGameTask); }
+            try { await Task.WhenAll(audioTask, monitorsTask, steamGamesTask, runningGameTask); }
             catch (Exception ex) { logger.LogDebug(ex, "One or more state queries failed"); }
 
             // Extract results — each in its own try/catch for partial failure
@@ -36,10 +35,6 @@ public static class SystemStateEndpoints
             List<MonitorInfo>? monitors = null;
             try { monitors = await monitorsTask; }
             catch (Exception ex) { logger.LogWarning(ex, "Failed to get monitors"); }
-
-            List<string>? monitorProfiles = null;
-            try { monitorProfiles = await profilesTask; }
-            catch (Exception ex) { logger.LogWarning(ex, "Failed to get monitor profiles"); }
 
             List<SteamGame>? steamGames = null;
             try { steamGames = await steamGamesTask; }
@@ -69,7 +64,6 @@ public static class SystemStateEndpoints
             {
                 Audio = audio,
                 Monitors = monitors,
-                MonitorProfiles = monitorProfiles,
                 SteamGames = steamGames,
                 RunningGame = runningGame,
                 Modes = modes,
@@ -99,9 +93,4 @@ public static class SystemStateEndpoints
         };
     }
 
-    private static async Task<List<string>> GetProfileNamesAsync(IMonitorService monitorService)
-    {
-        var profiles = await monitorService.GetProfilesAsync();
-        return profiles.Select(p => p.Name).ToList();
-    }
 }

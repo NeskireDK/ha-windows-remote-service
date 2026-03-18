@@ -265,7 +265,7 @@ public class ConfigurationWriterTests : IDisposable
         var mode = new ModeConfig
         {
             AudioDevice = "HDMI",
-            MonitorProfile = "tv-only",
+            SoloMonitor = "GSM59A4",
             Volume = 40,
             LaunchApp = "steam-bigpicture",
             KillApp = null
@@ -275,7 +275,7 @@ public class ConfigurationWriterTests : IDisposable
 
         var result = writer.Read().Modes["couch"];
         result.AudioDevice.ShouldBe("HDMI");
-        result.MonitorProfile.ShouldBe("tv-only");
+        result.SoloMonitor.ShouldBe("GSM59A4");
         result.Volume.ShouldBe(40);
         result.LaunchApp.ShouldBe("steam-bigpicture");
         result.KillApp.ShouldBeNull();

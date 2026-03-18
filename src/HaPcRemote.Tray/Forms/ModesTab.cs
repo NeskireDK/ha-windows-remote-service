@@ -14,7 +14,6 @@ internal sealed class ModesTab : TabPage
     private readonly ListBox _modeList;
     private readonly TextBox _modeNameBox;
     private readonly ComboBox _audioDeviceCombo;
-    private readonly ComboBox _monitorProfileCombo;
     private readonly ComboBox _soloMonitorCombo;
     private readonly TrackBar _volumeSlider;
     private readonly Label _volumeLabel;
@@ -99,18 +98,6 @@ internal sealed class ModesTab : TabPage
         };
         editLayout.Controls.Add(MakeLabel("Audio Device:"), 0, row);
         editLayout.Controls.Add(WithHelp(_audioDeviceCombo, _toolTip, "Audio output to switch to when this mode is activated.\nSelect \"(Don't change)\" to leave the current device untouched."), 1, row++);
-
-        // Monitor profile
-        _monitorProfileCombo = new ComboBox
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Width = 250,
-            BackColor = Color.FromArgb(50, 50, 50),
-            ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat
-        };
-        editLayout.Controls.Add(MakeLabel("Monitor Profile:"), 0, row);
-        editLayout.Controls.Add(WithHelp(_monitorProfileCombo, _toolTip, "Monitor layout to apply when this mode is activated.\nSelect \"(Don't change)\" to leave the current layout untouched."), 1, row++);
 
         // Solo monitor
         _soloMonitorCombo = new ComboBox
@@ -197,12 +184,6 @@ internal sealed class ModesTab : TabPage
             var devices = await _audioService.GetDevicesAsync();
             foreach (var d in devices)
                 _audioDeviceCombo.Items.Add(d.Name);
-
-            _monitorProfileCombo.Items.Clear();
-            _monitorProfileCombo.Items.Add("(Don't change)");
-            var profiles = await _monitorService.GetProfilesAsync();
-            foreach (var p in profiles)
-                _monitorProfileCombo.Items.Add(p.Name);
 
             _soloMonitorCombo.Items.Clear();
             _soloMonitorCombo.Items.Add(new MonitorDropdownItem(null, "(Don't change)"));
@@ -308,7 +289,6 @@ internal sealed class ModesTab : TabPage
 
         _modeNameBox.Text = name;
         _audioDeviceCombo.SelectedItem = mode.AudioDevice ?? "(Don't change)";
-        _monitorProfileCombo.SelectedItem = mode.MonitorProfile ?? "(Don't change)";
         SelectMonitorItem(_soloMonitorCombo, mode.SoloMonitor);
         _volumeSlider.Value = mode.Volume ?? 50;
         SelectAppItem(_launchAppCombo, mode.LaunchApp);
@@ -350,7 +330,6 @@ internal sealed class ModesTab : TabPage
         var mode = new ModeConfig
         {
             AudioDevice = _audioDeviceCombo.SelectedItem?.ToString() is "(Don't change)" ? null : _audioDeviceCombo.SelectedItem?.ToString(),
-            MonitorProfile = _monitorProfileCombo.SelectedItem?.ToString() is "(Don't change)" ? null : _monitorProfileCombo.SelectedItem?.ToString(),
             SoloMonitor = (_soloMonitorCombo.SelectedItem as MonitorDropdownItem)?.MonitorId,
             Volume = _volumeSlider.Value,
             LaunchApp = GetSelectedAppKey(_launchAppCombo),
@@ -397,7 +376,6 @@ internal sealed class ModesTab : TabPage
     {
         _modeNameBox.Text = "";
         if (_audioDeviceCombo.Items.Count > 0) _audioDeviceCombo.SelectedIndex = 0;
-        if (_monitorProfileCombo.Items.Count > 0) _monitorProfileCombo.SelectedIndex = 0;
         if (_soloMonitorCombo.Items.Count > 0) _soloMonitorCombo.SelectedIndex = 0;
         _volumeSlider.Value = 50;
         if (_launchAppCombo.Items.Count > 0) _launchAppCombo.SelectedIndex = 0;

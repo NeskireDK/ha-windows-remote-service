@@ -4,7 +4,6 @@ public sealed class SystemState
 {
     public AudioState? Audio { get; init; }
     public List<MonitorInfo>? Monitors { get; init; }
-    public List<string>? MonitorProfiles { get; init; }
     public List<SteamGame>? SteamGames { get; init; }
     public SteamRunningGame? RunningGame { get; init; }
     public List<string>? Modes { get; init; }

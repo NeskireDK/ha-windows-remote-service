@@ -1,5 +1,6 @@
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Reflection;
 using HaPcRemote.Service.Models;
 
 namespace HaPcRemote.Service.Endpoints;
@@ -12,10 +13,15 @@ public static class HealthEndpoints
 
         group.MapGet("/health", () =>
         {
+            var version = typeof(HealthEndpoints).Assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion?.Split('+')[0] ?? "0.0.0";
+
             var response = ApiResponse.Ok(new HealthResponse
             {
                 Status = "ok",
                 MachineName = Environment.MachineName,
+                Version = version,
                 MacAddresses = GetMacAddresses()
             });
             return Results.Json(response, AppJsonContext.Default.ApiResponseHealthResponse);

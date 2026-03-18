@@ -6,13 +6,15 @@ using Microsoft.Extensions.Logging;
 
 namespace HaPcRemote.Service.Services;
 
-public sealed class UpdateService(IHttpClientFactory httpClientFactory, ILogger<UpdateService> logger, bool includePrereleases = false) : IUpdateService
+public sealed class UpdateService(IHttpClientFactory httpClientFactory, ILogger<UpdateService> logger, Func<bool>? includePrereleases = null) : IUpdateService
 {
     private const string RepoOwner = "NeskireDK";
     private const string RepoName = "ha-pc-remote-service";
     private const string InstallerPrefix = "HaPcRemoteService-Setup-";
 
     private readonly SemaphoreSlim _lock = new(1, 1);
+
+    private bool IncludePrereleases => includePrereleases?.Invoke() ?? false;
 
     public async Task<UpdateResult> CheckAndApplyAsync(CancellationToken ct = default)
     {
@@ -33,11 +35,14 @@ public sealed class UpdateService(IHttpClientFactory httpClientFactory, ILogger<
     {
         var currentVersion = GetCurrentVersion();
         var currentVersionStr = currentVersion?.ToString(3) ?? "unknown";
+        var prerelease = IncludePrereleases;
 
+        logger.LogInformation("Update check starting - current: {CurrentVersion}, prereleases: {IncludePrereleases}",
+            currentVersionStr, prerelease);
         ReleaseInfo? release;
         try
         {
-            release = await CheckForUpdateAsync(currentVersion, ct);
+            release = await CheckForUpdateAsync(currentVersion, prerelease, ct);
         }
         catch (HttpRequestException ex)
         {
@@ -51,7 +56,10 @@ public sealed class UpdateService(IHttpClientFactory httpClientFactory, ILogger<
         }
 
         if (release is null)
+        {
+            logger.LogInformation("No update found - already up to date at {CurrentVersion}", currentVersionStr);
             return UpdateResult.UpToDate(currentVersionStr);
+        }
 
         try
         {
@@ -67,31 +75,33 @@ public sealed class UpdateService(IHttpClientFactory httpClientFactory, ILogger<
         }
     }
 
-    private async Task<ReleaseInfo?> CheckForUpdateAsync(Version? currentVersion, CancellationToken ct)
+    private async Task<ReleaseInfo?> CheckForUpdateAsync(Version? currentVersion, bool prerelease, CancellationToken ct)
     {
         using var client = CreateHttpClient();
 
-        if (includePrereleases)
+        if (prerelease)
         {
             var url = $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases";
+            logger.LogDebug("Fetching all releases from {Url}", url);
             var releases = await client.GetFromJsonAsync(url, UpdateJsonContext.Default.ListGitHubReleaseDto, ct);
             if (releases is null) return null;
-            return FindBestRelease(releases, currentVersion);
+            return FindBestRelease(releases, currentVersion, prerelease);
         }
         else
         {
             var url = $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases/latest";
+            logger.LogDebug("Fetching latest stable release from {Url}", url);
             var release = await client.GetFromJsonAsync(url, UpdateJsonContext.Default.GitHubReleaseDto, ct);
             if (release is null) return null;
-            return FindBestRelease([release], currentVersion);
+            return FindBestRelease([release], currentVersion, prerelease);
         }
     }
 
-    private ReleaseInfo? FindBestRelease(List<GitHubReleaseDto> releases, Version? currentVersion)
+    private ReleaseInfo? FindBestRelease(List<GitHubReleaseDto> releases, Version? currentVersion, bool prerelease)
     {
         foreach (var release in releases)
         {
-            if (!includePrereleases && IsPrerelease(release.TagName))
+            if (!prerelease && IsPrerelease(release.TagName))
                 continue;
 
             var latestVersion = ParseVersion(release.TagName);
