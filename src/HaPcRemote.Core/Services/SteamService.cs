@@ -444,6 +444,15 @@ public class SteamService(
     public bool IsSteamRunning() => platform.IsSteamRunning();
 
     /// <summary>
+    /// Seeds the game cache directly. Intended for test use only.
+    /// </summary>
+    internal void SetCachedGamesForTest(List<SteamGame> games)
+    {
+        _cachedGames = games;
+        _cacheExpiry = DateTime.UtcNow + CacheDuration;
+    }
+
+    /// <summary>
     /// Resolve which PC mode to apply for a given game.
     /// Per-game binding takes priority, then default, then none.
     /// Returns null/empty if no mode switch should happen.

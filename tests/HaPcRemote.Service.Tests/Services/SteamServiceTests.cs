@@ -1,4 +1,3 @@
-using System.Reflection;
 using FakeItEasy;
 using HaPcRemote.Service.Configuration;
 using HaPcRemote.Service.Models;
@@ -915,9 +914,7 @@ public class SteamServiceTests
 
     private static void InjectCachedGames(SteamService service, List<SteamGame> games)
     {
-        typeof(SteamService)
-            .GetField("_cachedGames", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .SetValue(service, games);
+        service.SetCachedGamesForTest(games);
     }
 
     [Fact]
