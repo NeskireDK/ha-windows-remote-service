@@ -8,7 +8,7 @@ using Microsoft.Win32;
 namespace HaPcRemote.Service.Services;
 
 [SupportedOSPlatform("windows")]
-public class WindowsSteamPlatform(ILogger<WindowsSteamPlatform> logger) : ISteamPlatform
+public sealed class WindowsSteamPlatform(ILogger<WindowsSteamPlatform> logger) : ISteamPlatform
 {
     public string? GetSteamPath()
     {

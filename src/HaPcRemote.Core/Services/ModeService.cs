@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 
 namespace HaPcRemote.Service.Services;
 
-public class ModeService(
+public sealed class ModeService(
     IOptionsMonitor<PcRemoteOptions> options,
     IAudioService audioService,
     IMonitorService monitorService,

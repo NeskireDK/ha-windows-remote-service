@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 
 namespace HaPcRemote.Service.Services;
 
-public class EmulatorTracker : IEmulatorTracker
+public sealed class EmulatorTracker : IEmulatorTracker
 {
     private readonly ILogger<EmulatorTracker> _logger;
     private readonly string _filePath;
