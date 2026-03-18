@@ -2,6 +2,7 @@ namespace HaPcRemote.Tray;
 
 internal static class KestrelStatus
 {
+    private static readonly object _sync = new();
     private static TaskCompletionSource _started = new();
 
     public static bool IsRunning { get; private set; }
@@ -10,22 +11,31 @@ internal static class KestrelStatus
 
     public static void SetRunning()
     {
-        IsRunning = true;
+        lock (_sync)
+        {
+            IsRunning = true;
+        }
         _started.TrySetResult();
     }
 
     public static void SetFailed(string error)
     {
-        IsRunning = false;
-        Error = error;
+        lock (_sync)
+        {
+            IsRunning = false;
+            Error = error;
+        }
         _started.TrySetResult();
     }
 
     /// <summary>Reset status before an in-process restart so GeneralTab can await the new Started task.</summary>
     public static void Reset()
     {
-        IsRunning = false;
-        Error = null;
-        _started = new TaskCompletionSource();
+        lock (_sync)
+        {
+            IsRunning = false;
+            Error = null;
+        }
+        Interlocked.Exchange(ref _started, new TaskCompletionSource());
     }
 }
