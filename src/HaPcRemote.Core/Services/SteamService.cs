@@ -6,7 +6,7 @@ using ValveKeyValue;
 
 namespace HaPcRemote.Service.Services;
 
-public class SteamService(
+public sealed class SteamService(
     ISteamPlatform platform,
     IModeService modeService,
     IOptionsMonitor<PcRemoteOptions> options,
@@ -17,6 +17,7 @@ public class SteamService(
     private List<SteamGame>? _cachedGames;
     private DateTime _cacheExpiry;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(1);
+    private readonly SemaphoreSlim _cacheLock = new(1, 1);
 
     public async Task<List<SteamGame>> GetGamesAsync()
     {
@@ -54,11 +55,7 @@ public class SteamService(
         }
 
         // Warm the cache if not yet populated
-        if (_cachedGames == null || _cachedGames.Count == 0)
-        {
-            try { await GetGamesAsync(); }
-            catch (InvalidOperationException) { /* Steam path unavailable, continue without cache */ }
-        }
+        await EnsureCacheWarmAsync();
 
         var name = _cachedGames?.Find(g => g.AppId == appId)?.Name;
 
@@ -82,11 +79,7 @@ public class SteamService(
     {
         var steamAppId = platform.GetRunningAppId();
 
-        if (_cachedGames == null || _cachedGames.Count == 0)
-        {
-            try { await GetGamesAsync(); }
-            catch (InvalidOperationException) { /* Steam path unavailable */ }
-        }
+        await EnsureCacheWarmAsync();
 
         var shortcuts = _cachedGames?.Where(g => g.IsShortcut && g.ExePath != null).ToList()
                         ?? [];
@@ -171,11 +164,7 @@ public class SteamService(
     private async Task<SteamRunningGame?> TryFindRunningShortcutAsync()
     {
         // Warm the cache if needed
-        if (_cachedGames == null || _cachedGames.Count == 0)
-        {
-            try { await GetGamesAsync(); }
-            catch (InvalidOperationException) { return null; }
-        }
+        await EnsureCacheWarmAsync();
 
         var shortcuts = _cachedGames?.Where(g => g.IsShortcut && g.ExePath != null).ToList();
         if (shortcuts == null || shortcuts.Count == 0)
@@ -440,6 +429,21 @@ public class SteamService(
     }
 
     public bool IsSteamRunning() => platform.IsSteamRunning();
+
+    private async Task EnsureCacheWarmAsync()
+    {
+        await _cacheLock.WaitAsync();
+        try
+        {
+            if (_cachedGames is { Count: > 0 }) return;
+            try { await GetGamesAsync(); }
+            catch (InvalidOperationException) { /* Steam not installed */ }
+        }
+        finally
+        {
+            _cacheLock.Release();
+        }
+    }
 
     /// <summary>
     /// Resolve which PC mode to apply for a given game.
@@ -953,11 +957,7 @@ public class SteamService(
         if (steamPath == null) return null;
 
         // Warm cache if needed
-        if (_cachedGames == null || _cachedGames.Count == 0)
-        {
-            try { await GetGamesAsync(); }
-            catch (InvalidOperationException) { /* no Steam */ }
-        }
+        await EnsureCacheWarmAsync();
 
         var gameName = _cachedGames?.FirstOrDefault(g => g.AppId == appId)?.Name ?? $"Unknown ({appId})";
         return GetArtworkDiagnostics(steamPath, platform.GetSteamUserId(), appId, gameName);
