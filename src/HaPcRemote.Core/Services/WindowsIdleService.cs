@@ -75,13 +75,13 @@ public sealed partial class WindowsIdleService : IIdleService
         if (!GetLastInputInfo(ref info))
             return null;
 
-        var kbMouseIdleMs = (uint)Environment.TickCount - info.dwTime;
+        var kbMouseIdleMs = (ulong)Environment.TickCount64 - info.dwTime;
 
         // Gamepad idle — poll all 4 XInput slots
         PollGamepads();
-        var gamepadIdleMs = Environment.TickCount64 - LastGamepadInputTick;
+        var gamepadIdleMs = (ulong)(Environment.TickCount64 - LastGamepadInputTick);
 
-        var minIdleMs = Math.Min(kbMouseIdleMs, (uint)Math.Min(gamepadIdleMs, uint.MaxValue));
+        var minIdleMs = Math.Min(kbMouseIdleMs, gamepadIdleMs);
         return (int)(minIdleMs / 1000);
     }
 
