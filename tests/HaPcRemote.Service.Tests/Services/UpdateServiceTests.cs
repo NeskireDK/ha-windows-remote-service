@@ -74,13 +74,63 @@ public class UpdateServiceTests
     // ── GetCurrentVersion ─────────────────────────────────────────────
 
     [Fact]
-    public void GetCurrentVersion_InTestContext_ReturnsNullOrValidVersion()
+    public void GetCurrentVersion_ReadsFromServiceAssembly()
     {
-        // In test runner, GetEntryAssembly() may return null or test host assembly.
-        // Either way, it should not throw.
+        // Should read from UpdateService's assembly (HaPcRemote.Core), not entry assembly.
         var version = UpdateService.GetCurrentVersion();
 
-        // No assertion on value — just confirm no exception
+        // In test context the Core assembly has a version set via .csproj
+        version.ShouldNotBeNull();
+    }
+
+    // ── ParseVersion ─────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("v1.7.0", 1, 7, 0, int.MaxValue)]
+    [InlineData("1.7.0", 1, 7, 0, int.MaxValue)]
+    [InlineData("v1.7.0-rc.1", 1, 7, 0, 1)]
+    [InlineData("v1.7.0-rc.4", 1, 7, 0, 4)]
+    [InlineData("1.7.0-rc.3", 1, 7, 0, 3)]
+    [InlineData("v2.0.0-beta.2", 2, 0, 0, 2)]
+    [InlineData("v1.7.0-alpha", 1, 7, 0, 0)]
+    [InlineData("v1.2", 1, 2, 0, int.MaxValue)]
+    public void ParseVersion_ParsesCorrectly(string tag, int major, int minor, int patch, int revision)
+    {
+        var v = UpdateService.ParseVersion(tag);
+
+        v.ShouldNotBeNull();
+        v!.Major.ShouldBe(major);
+        v.Minor.ShouldBe(minor);
+        v.Build.ShouldBe(patch);
+        v.Revision.ShouldBe(revision);
+    }
+
+    [Fact]
+    public void ParseVersion_InvalidTag_ReturnsNull()
+    {
+        UpdateService.ParseVersion("not-a-version").ShouldBeNull();
+    }
+
+    [Fact]
+    public void ParseVersion_StableIsGreaterThanPrerelease()
+    {
+        var stable = UpdateService.ParseVersion("v1.7.0");
+        var rc4 = UpdateService.ParseVersion("v1.7.0-rc.4");
+
+        stable.ShouldNotBeNull();
+        rc4.ShouldNotBeNull();
+        stable.ShouldBeGreaterThan(rc4);
+    }
+
+    [Fact]
+    public void ParseVersion_HigherRcIsGreaterThanLowerRc()
+    {
+        var rc4 = UpdateService.ParseVersion("v1.7.0-rc.4");
+        var rc3 = UpdateService.ParseVersion("v1.7.0-rc.3");
+
+        rc4.ShouldNotBeNull();
+        rc3.ShouldNotBeNull();
+        rc4.ShouldBeGreaterThan(rc3);
     }
 
     // ── ParseVersion via CheckAndApplyAsync ───────────────────────────
@@ -88,29 +138,26 @@ public class UpdateServiceTests
     [Fact]
     public async Task CheckAndApply_TagWithVPrefix_ParsedCorrectly()
     {
-        // v2.0.0 > anything GetCurrentVersion returns in test (null),
-        // so if current is null, result is UpToDate (null version comparison exits early).
-        // We test parse behavior through the returned result.
-        var json = MakeReleaseJson("v2.0.0", "HaPcRemoteService-Setup-2.0.0.exe");
+        var json = MakeReleaseJson("v0.0.1", "HaPcRemoteService-Setup-0.0.1.exe");
         SetupHttpResponse(json);
         var svc = CreateService();
 
         var result = await svc.CheckAndApplyAsync();
 
-        // currentVersion is null in test → latestVersion comparison short-circuits → UpToDate
+        // v0.0.1 < current → UpToDate
         result.Status.ShouldBe(UpdateStatus.UpToDate);
     }
 
     [Fact]
     public async Task CheckAndApply_TagWithoutVPrefix_ParsedCorrectly()
     {
-        var json = MakeReleaseJson("2.0.0", "HaPcRemoteService-Setup-2.0.0.exe");
+        var json = MakeReleaseJson("0.0.1", "HaPcRemoteService-Setup-0.0.1.exe");
         SetupHttpResponse(json);
         var svc = CreateService();
 
         var result = await svc.CheckAndApplyAsync();
 
-        // Same as above: currentVersion null → UpToDate
+        // 0.0.1 < current → UpToDate
         result.Status.ShouldBe(UpdateStatus.UpToDate);
     }
 

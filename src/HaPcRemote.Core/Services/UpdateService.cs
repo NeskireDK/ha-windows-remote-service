@@ -34,7 +34,7 @@ public sealed class UpdateService(IHttpClientFactory httpClientFactory, ILogger<
     private async Task<UpdateResult> CheckAndApplyInternalAsync(CancellationToken ct)
     {
         var currentVersion = GetCurrentVersion();
-        var currentVersionStr = currentVersion?.ToString(3) ?? "unknown";
+        var currentVersionStr = currentVersion is not null ? FormatVersion(currentVersion) : "unknown";
         var prerelease = IncludePrereleases;
 
         logger.LogInformation("Update check starting - current: {CurrentVersion}, prereleases: {IncludePrereleases}",
@@ -151,23 +151,50 @@ public sealed class UpdateService(IHttpClientFactory httpClientFactory, ILogger<
 
     internal static Version? GetCurrentVersion()
     {
-        var infoVersion = Assembly.GetEntryAssembly()
-            ?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        var infoVersion = typeof(UpdateService).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
         if (infoVersion is null) return null;
-        var versionPart = infoVersion.Split('+')[0];
-        if (!Version.TryParse(versionPart, out var v)) return null;
-        return v.Build < 0 ? new Version(v.Major, v.Minor, 0) : v;
+        return ParseVersion(infoVersion.Split('+')[0]);
     }
 
-    private static Version? ParseVersion(string tag)
+    /// <summary>
+    /// Parses version strings like "v1.7.0", "1.7.0-rc.3", "v1.7.0-rc.1".
+    /// Prerelease suffix is encoded in the 4th component: "1.7.0-rc.3" → Version(1,7,0,3).
+    /// Stable versions get 4th component = int.MaxValue so they sort higher than any RC.
+    /// </summary>
+    internal static Version? ParseVersion(string tag)
     {
         var cleaned = tag.TrimStart('v');
-        // Strip prerelease suffix (e.g. "1.7.0-rc.1" → "1.7.0")
         var dashIdx = cleaned.IndexOf('-');
-        if (dashIdx >= 0) cleaned = cleaned[..dashIdx];
+        var prerelease = -1;
+
+        if (dashIdx >= 0)
+        {
+            var suffix = cleaned[(dashIdx + 1)..];
+            // Extract trailing number from prerelease suffix (e.g. "rc.3" → 3, "beta.1" → 1)
+            var dotIdx = suffix.LastIndexOf('.');
+            if (dotIdx >= 0 && int.TryParse(suffix[(dotIdx + 1)..], out var n))
+                prerelease = n;
+            else
+                prerelease = 0; // e.g. "beta" with no number
+
+            cleaned = cleaned[..dashIdx];
+        }
+
         if (!Version.TryParse(cleaned, out var v)) return null;
-        return v.Build < 0 ? new Version(v.Major, v.Minor, 0) : v;
+        var major = v.Major;
+        var minor = v.Minor;
+        var patch = v.Build < 0 ? 0 : v.Build;
+
+        // Stable (no dash) → int.MaxValue so v1.7.0 > v1.7.0-rc.99
+        var revision = prerelease < 0 ? int.MaxValue : prerelease;
+        return new Version(major, minor, patch, revision);
     }
+
+    private static string FormatVersion(Version v) =>
+        v.Revision == int.MaxValue
+            ? v.ToString(3)
+            : $"{v.Major}.{v.Minor}.{v.Build}-rc.{v.Revision}";
 
     private HttpClient CreateHttpClient()
     {
