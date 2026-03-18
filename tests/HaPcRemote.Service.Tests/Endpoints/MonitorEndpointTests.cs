@@ -62,4 +62,49 @@ public class MonitorEndpointTests : EndpointTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
+    [Fact]
+    public async Task DisableMonitor_ValidId_Returns200()
+    {
+        A.CallTo(() => MonitorService.DisableMonitorAsync("DEL4321")).Returns(Task.CompletedTask);
+        using var client = CreateClient();
+
+        var response = await client.PostAsync("/api/monitor/disable/DEL4321", null);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task DisableMonitor_InvalidId_Returns404()
+    {
+        A.CallTo(() => MonitorService.DisableMonitorAsync("UNKNOWN"))
+            .Throws(new KeyNotFoundException("Monitor 'UNKNOWN' not found."));
+        using var client = CreateClient();
+
+        var response = await client.PostAsync("/api/monitor/disable/UNKNOWN", null);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task SoloMonitor_ValidId_Returns200()
+    {
+        A.CallTo(() => MonitorService.SoloMonitorAsync("GSM59A4")).Returns(Task.CompletedTask);
+        using var client = CreateClient();
+
+        var response = await client.PostAsync("/api/monitor/solo/GSM59A4", null);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task SetPrimaryMonitor_ValidId_Returns200()
+    {
+        A.CallTo(() => MonitorService.SetPrimaryAsync("GSM59A4")).Returns(Task.CompletedTask);
+        using var client = CreateClient();
+
+        var response = await client.PostAsync("/api/monitor/primary/GSM59A4", null);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
 }
