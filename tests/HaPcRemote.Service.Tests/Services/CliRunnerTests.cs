@@ -34,7 +34,7 @@ public class CliRunnerTests
     [Fact]
     public void SplitCsvLine_SimpleFields_SplitsCorrectly()
     {
-        var result = CliRunner.SplitCsvLine("a,b,c");
+        var result = CsvParser.SplitCsvLine("a,b,c");
 
         result.ShouldBe(new[] { "a", "b", "c" });
     }
@@ -42,7 +42,7 @@ public class CliRunnerTests
     [Fact]
     public void SplitCsvLine_QuotedField_RemovesQuotes()
     {
-        var result = CliRunner.SplitCsvLine("\"hello world\",b");
+        var result = CsvParser.SplitCsvLine("\"hello world\",b");
 
         result.ShouldBe(new[] { "hello world", "b" });
     }
@@ -50,7 +50,7 @@ public class CliRunnerTests
     [Fact]
     public void SplitCsvLine_QuotedFieldWithComma_PreservesComma()
     {
-        var result = CliRunner.SplitCsvLine("\"a,b\",c");
+        var result = CsvParser.SplitCsvLine("\"a,b\",c");
 
         result.ShouldBe(new[] { "a,b", "c" });
     }
@@ -58,7 +58,7 @@ public class CliRunnerTests
     [Fact]
     public void SplitCsvLine_EscapedQuote_PreservesQuote()
     {
-        var result = CliRunner.SplitCsvLine("\"he said \"\"hi\"\"\",b");
+        var result = CsvParser.SplitCsvLine("\"he said \"\"hi\"\"\",b");
 
         result.ShouldBe(new[] { "he said \"hi\"", "b" });
     }
@@ -66,7 +66,7 @@ public class CliRunnerTests
     [Fact]
     public void SplitCsvLine_EmptyFields_ReturnsEmptyStrings()
     {
-        var result = CliRunner.SplitCsvLine("a,,c,");
+        var result = CsvParser.SplitCsvLine("a,,c,");
 
         result.ShouldBe(new[] { "a", "", "c", "" });
     }
@@ -74,7 +74,7 @@ public class CliRunnerTests
     [Fact]
     public void SplitCsvLine_SingleField_ReturnsSingleElement()
     {
-        var result = CliRunner.SplitCsvLine("hello");
+        var result = CsvParser.SplitCsvLine("hello");
 
         result.ShouldBe(new[] { "hello" });
     }
@@ -82,7 +82,7 @@ public class CliRunnerTests
     [Fact]
     public void SplitCsvLine_EmptyString_ReturnsSingleEmptyElement()
     {
-        var result = CliRunner.SplitCsvLine("");
+        var result = CsvParser.SplitCsvLine("");
 
         result.ShouldBe(new[] { "" });
     }

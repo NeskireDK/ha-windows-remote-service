@@ -49,7 +49,7 @@ public class AudioService(IOptionsMonitor<PcRemoteOptions> options, ICliRunner c
             if (string.IsNullOrWhiteSpace(trimmed))
                 continue;
 
-            var columns = CliRunner.SplitCsvLine(trimmed);
+            var columns = CsvParser.SplitCsvLine(trimmed);
             if (columns.Count < 5)
                 continue;
 
