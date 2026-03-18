@@ -382,14 +382,7 @@ internal sealed class ModesTab : TabPage
         if (_killAppCombo.Items.Count > 0) _killAppCombo.SelectedIndex = 0;
     }
 
-    private static Label MakeLabel(string text) => new()
-    {
-        Text = text,
-        ForeColor = Color.White,
-        AutoSize = true,
-        Anchor = AnchorStyles.Left,
-        Padding = new Padding(0, 6, 0, 0)
-    };
+    private static Label MakeLabel(string text) => TabHelpers.MakeLabel(text);
 
     private static FlowLayoutPanel WithHelp(Control control, ToolTip toolTip, string helpText)
     {
@@ -399,21 +392,7 @@ internal sealed class ModesTab : TabPage
         return panel;
     }
 
-    private static Label MakeHelpIcon(ToolTip toolTip, string helpText)
-    {
-        var label = new Label
-        {
-            Text = "ⓘ",
-            ForeColor = Color.FromArgb(120, 180, 255),
-            AutoSize = true,
-            Cursor = Cursors.Help,
-            Padding = new Padding(4, 5, 0, 0),
-            Font = new Font("Segoe UI", 9f)
-        };
-        toolTip.SetToolTip(label, helpText);
-        label.Click += (_, _) => toolTip.Show(helpText, label, 3000);
-        return label;
-    }
+    private static Label MakeHelpIcon(ToolTip toolTip, string helpText) => TabHelpers.MakeHelpIcon(toolTip, helpText);
 
     private static Button CreateButton(string text) => new()
     {

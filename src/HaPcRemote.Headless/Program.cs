@@ -4,7 +4,6 @@ using HaPcRemote.Service.Configuration;
 using HaPcRemote.Service.Endpoints;
 using HaPcRemote.Service.Logging;
 using HaPcRemote.Service.Middleware;
-using HaPcRemote.Service.Models;
 using HaPcRemote.Service.Services;
 using HaPcRemote.Shared.Configuration;
 
@@ -19,7 +18,6 @@ builder.Logging.AddConsole();
 builder.Logging.AddProvider(new FileLoggerProvider(ConfigPaths.GetLogFilePath()));
 
 // Config
-var writableConfigDir = ConfigPaths.GetWritableConfigDir();
 var writableConfigPath = ConfigPaths.GetWritableConfigPath();
 builder.Configuration.AddJsonFile(writableConfigPath, optional: true, reloadOnChange: true);
 
@@ -32,43 +30,18 @@ builder.Services.Configure<PcRemoteOptions>(
     builder.Configuration.GetSection(PcRemoteOptions.SectionName));
 
 // Resolve relative paths against exe directory
-builder.Services.PostConfigure<PcRemoteOptions>(options =>
-{
-    var baseDir = AppContext.BaseDirectory;
-    options.ToolsPath = ResolveRelativePath(options.ToolsPath, baseDir);
-    foreach (var app in options.Apps.Values)
-    {
-        if (!string.IsNullOrEmpty(app.ExePath))
-            app.ExePath = ResolveRelativePath(app.ExePath, baseDir);
-    }
-});
-
-static string ResolveRelativePath(string path, string baseDir) =>
-    Path.IsPathRooted(path) ? path : Path.GetFullPath(path, baseDir);
+builder.AddPcRemoteOptions();
 
 var pcRemoteConfig = builder.Configuration
     .GetSection(PcRemoteOptions.SectionName)
     .Get<PcRemoteOptions>() ?? new PcRemoteOptions();
 
 // Generate API key if not configured
-if (pcRemoteConfig.Auth.Enabled && string.IsNullOrEmpty(pcRemoteConfig.Auth.ApiKey))
+var generatedApiKey = HostBootstrapExtensions.BootstrapApiKey(builder.Configuration, pcRemoteConfig);
+if (generatedApiKey != null)
 {
-    string configPath;
-    try
-    {
-        Directory.CreateDirectory(writableConfigDir);
-        configPath = writableConfigPath;
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[STARTUP] Failed to create config directory {writableConfigDir}: {ex.Message}");
-        configPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
-    }
-    var generatedKey = ApiKeyService.GenerateApiKey();
-    ApiKeyService.WriteApiKeyToConfig(configPath, generatedKey);
-    builder.Configuration.GetSection("PcRemote:Auth:ApiKey").Value = generatedKey;
-    Console.WriteLine($"[STARTUP] Generated API key: {generatedKey}");
-    Console.WriteLine($"[STARTUP] Key saved to {configPath}");
+    Console.WriteLine($"[STARTUP] Generated API key: {generatedApiKey}");
+    Console.WriteLine($"[STARTUP] Key saved to {ConfigPaths.GetWritableConfigPath()}");
 }
 
 // Configure Kestrel port
@@ -100,27 +73,7 @@ builder.Services.AddSingleton<IRestartService, HostLifetimeRestartService>();
 var app = builder.Build();
 
 // Global exception handler
-app.Use(async (context, next) =>
-{
-    try
-    {
-        await next(context);
-    }
-    catch (Exception ex)
-    {
-        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Unhandled exception");
-        if (!context.Response.HasStarted)
-        {
-            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-            context.Response.ContentType = "application/json";
-            await context.Response.WriteAsJsonAsync(
-                ApiResponse.Fail("Internal server error"),
-                AppJsonContext.Default.Options,
-                context.RequestAborted);
-        }
-    }
-});
+app.UseApiResponseExceptionHandler();
 
 app.UseMiddleware<ApiKeyMiddleware>();
 app.MapDebugEndpoints();

@@ -56,7 +56,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _updateChecker = new UpdateChecker(loggerFactory.CreateLogger<UpdateChecker>());
 
         var settings = TraySettings.Load();
-        var logLevel = ParseLogLevel(settings.LogLevel);
+        var logLevel = TabHelpers.ParseLogLevel(settings.LogLevel);
         InMemoryLogProvider.MinimumLevel = logLevel;
         FileLoggerProvider.MinimumLevel = logLevel;
 
@@ -206,14 +206,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _updateTimer.Interval = GetUpdateTimerInterval(s.AutoUpdate);
         _logger.LogInformation("Auto update {State}", s.AutoUpdate ? "enabled" : "disabled");
     }
-
-    private static LogLevel ParseLogLevel(string level) => level switch
-    {
-        "Error"   => LogLevel.Error,
-        "Info"    => LogLevel.Information,
-        "Verbose" => LogLevel.Debug,
-        _         => LogLevel.Warning
-    };
 
     private static int GetUpdateTimerInterval(bool autoUpdate)
         => autoUpdate ? 5 * 60 * 1000 : 4 * 60 * 60 * 1000;

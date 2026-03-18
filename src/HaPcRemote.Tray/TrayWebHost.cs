@@ -3,7 +3,6 @@ using HaPcRemote.Service.Configuration;
 using HaPcRemote.Service.Endpoints;
 using HaPcRemote.Service.Logging;
 using HaPcRemote.Service.Middleware;
-using HaPcRemote.Service.Models;
 using HaPcRemote.Service.Native;
 using HaPcRemote.Service.Services;
 using HaPcRemote.Shared.Configuration;
@@ -26,7 +25,6 @@ internal static class TrayWebHost
         builder.Logging.AddProvider(logProvider);
 
         // Config
-        var writableConfigDir = ConfigPaths.GetWritableConfigDir();
         var writableConfigPath = ConfigPaths.GetWritableConfigPath();
         builder.Configuration.AddJsonFile(writableConfigPath, optional: true, reloadOnChange: true);
 
@@ -39,39 +37,14 @@ internal static class TrayWebHost
             builder.Configuration.GetSection(PcRemoteOptions.SectionName));
 
         // Resolve relative paths: tools against exe dir, profiles against user config dir
-        builder.Services.PostConfigure<PcRemoteOptions>(options =>
-        {
-            var baseDir = AppContext.BaseDirectory;
-            if (!Path.IsPathRooted(options.ToolsPath))
-                options.ToolsPath = Path.GetFullPath(options.ToolsPath, baseDir);
-            foreach (var app in options.Apps.Values)
-            {
-                if (!string.IsNullOrEmpty(app.ExePath) && !Path.IsPathRooted(app.ExePath))
-                    app.ExePath = Path.GetFullPath(app.ExePath, baseDir);
-            }
-        });
+        builder.AddPcRemoteOptions();
 
         var pcRemoteConfig = builder.Configuration
             .GetSection(PcRemoteOptions.SectionName)
             .Get<PcRemoteOptions>() ?? new PcRemoteOptions();
 
         // Generate API key if not configured
-        if (pcRemoteConfig.Auth.Enabled && string.IsNullOrEmpty(pcRemoteConfig.Auth.ApiKey))
-        {
-            string configPath;
-            try
-            {
-                Directory.CreateDirectory(writableConfigDir);
-                configPath = writableConfigPath;
-            }
-            catch
-            {
-                configPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
-            }
-            var generatedKey = ApiKeyService.GenerateApiKey();
-            ApiKeyService.WriteApiKeyToConfig(configPath, generatedKey);
-            builder.Configuration.GetSection("PcRemote:Auth:ApiKey").Value = generatedKey;
-        }
+        HostBootstrapExtensions.BootstrapApiKey(builder.Configuration, pcRemoteConfig);
 
         // Configure Kestrel port
         builder.WebHost.ConfigureKestrel(options =>
@@ -121,26 +94,7 @@ internal static class TrayWebHost
             app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(nameof(SteamAppBootstrapper)));
 
         // Global exception handler
-        app.Use(async (context, next) =>
-        {
-            try
-            {
-                await next(context);
-            }
-            catch (Exception ex)
-            {
-                var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger(nameof(TrayWebHost));
-                logger.LogError(ex, "Unhandled exception");
-                if (!context.Response.HasStarted)
-                {
-                    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-                    context.Response.ContentType = "application/json";
-                    await context.Response.WriteAsJsonAsync(
-                        ApiResponse.Fail("Internal server error"),
-                        AppJsonContext.Default.ApiResponse);
-                }
-            }
-        });
+        app.UseApiResponseExceptionHandler();
 
         app.UseMiddleware<ApiKeyMiddleware>();
         app.MapDebugEndpoints();
