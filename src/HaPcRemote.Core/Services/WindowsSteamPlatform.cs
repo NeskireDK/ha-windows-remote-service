@@ -42,28 +42,8 @@ public class WindowsSteamPlatform(ILogger<WindowsSteamPlatform> logger) : ISteam
         }
     }
 
-    public void KillProcessesInDirectory(string directory)
-    {
-        foreach (var proc in Process.GetProcesses())
-        {
-            try
-            {
-                var path = proc.MainModule?.FileName;
-                if (path != null && path.StartsWith(directory, StringComparison.OrdinalIgnoreCase))
-                {
-                    proc.Kill(entireProcessTree: true);
-                }
-            }
-            catch
-            {
-                // Access denied for system processes, or process already exited
-            }
-            finally
-            {
-                proc.Dispose();
-            }
-        }
-    }
+    public void KillProcessesInDirectory(string directory) =>
+        SteamPlatformHelpers.KillProcessesInDirectory(directory, logger);
 
     public void KillProcess(int processId)
     {

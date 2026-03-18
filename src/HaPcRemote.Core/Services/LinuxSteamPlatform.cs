@@ -1,12 +1,13 @@
 using System.Diagnostics;
 using System.Runtime.Versioning;
 using HaPcRemote.Service.Models;
+using Microsoft.Extensions.Logging;
 using ValveKeyValue;
 
 namespace HaPcRemote.Service.Services;
 
 [SupportedOSPlatform("linux")]
-public sealed class LinuxSteamPlatform : ISteamPlatform
+public sealed class LinuxSteamPlatform(ILogger<LinuxSteamPlatform> logger) : ISteamPlatform
 {
     private static readonly string[] KnownSteamPaths =
     [
@@ -82,28 +83,8 @@ public sealed class LinuxSteamPlatform : ISteamPlatform
         using var process = Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
-    public void KillProcessesInDirectory(string directory)
-    {
-        foreach (var proc in Process.GetProcesses())
-        {
-            try
-            {
-                var path = proc.MainModule?.FileName;
-                if (path != null && path.StartsWith(directory, StringComparison.OrdinalIgnoreCase))
-                {
-                    proc.Kill(entireProcessTree: true);
-                }
-            }
-            catch
-            {
-                // Access denied for system processes, or process already exited
-            }
-            finally
-            {
-                proc.Dispose();
-            }
-        }
-    }
+    public void KillProcessesInDirectory(string directory) =>
+        SteamPlatformHelpers.KillProcessesInDirectory(directory, logger);
 
     public void KillProcess(int processId)
     {
