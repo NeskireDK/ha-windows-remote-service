@@ -54,6 +54,8 @@ internal static partial class DisplayConfigApi
     // ── Constants ─────────────────────────────────────────────────────
 
     internal const int ERROR_SUCCESS = 0;
+    internal const int ERROR_GEN_FAILURE = 31;
+    internal const int ERROR_INVALID_PARAMETER = 87;
     internal const int ERROR_INSUFFICIENT_BUFFER = 122;
     internal const uint DISPLAYCONFIG_PATH_MODE_IDX_INVALID = 0xFFFFFFFF;
 

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using FakeItEasy;
 using HaPcRemote.Service.Models;
 using HaPcRemote.Service.Native;
@@ -688,6 +689,182 @@ public class WindowsMonitorServiceTests
         await service.EnableMonitorAsync("GSM59A4#2");
 
         // Should have called ApplyConfig — verifying it didn't throw
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .MustHaveHappenedOnceExactly();
+    }
+
+    // ── Retry resilience ────────────────────────────────────────────
+
+    private WindowsMonitorService CreateServiceWithNoRetryDelay()
+    {
+        var service = new WindowsMonitorService(_api, _logger);
+        service.RetryDelaysMs = [0, 0, 0];
+        return service;
+    }
+
+    [Fact]
+    public async Task EnableMonitorAsync_Error31_RetriesAndSucceeds()
+    {
+        SetupOneActiveOneInactive();
+        var service = CreateServiceWithNoRetryDelay();
+
+        var callCount = 0;
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .Invokes(() =>
+            {
+                callCount++;
+                if (callCount == 1)
+                    throw new Win32Exception(ERROR_GEN_FAILURE);
+            });
+
+        await service.EnableMonitorAsync("DEL4321");
+
+        callCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task DisableMonitorAsync_Error31_RetriesAndSucceeds()
+    {
+        SetupTwoMonitorConfig();
+        var service = CreateServiceWithNoRetryDelay();
+
+        var callCount = 0;
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .Invokes(() =>
+            {
+                callCount++;
+                if (callCount == 1)
+                    throw new Win32Exception(ERROR_GEN_FAILURE);
+            });
+
+        await service.DisableMonitorAsync("DEL4321");
+
+        callCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task SetPrimaryAsync_Error31_RetriesAndSucceeds()
+    {
+        SetupTwoMonitorConfig();
+        var service = CreateServiceWithNoRetryDelay();
+
+        var callCount = 0;
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .Invokes(() =>
+            {
+                callCount++;
+                if (callCount == 1)
+                    throw new Win32Exception(ERROR_GEN_FAILURE);
+            });
+
+        await service.SetPrimaryAsync("DEL4321");
+
+        callCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task SoloMonitorAsync_Error31_RetriesAndSucceeds()
+    {
+        SetupTwoMonitorConfig();
+        var service = CreateServiceWithNoRetryDelay();
+
+        var callCount = 0;
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .Invokes(() =>
+            {
+                callCount++;
+                if (callCount == 1)
+                    throw new Win32Exception(ERROR_GEN_FAILURE);
+            });
+
+        await service.SoloMonitorAsync("DEL4321");
+
+        callCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task EnableMonitorAsync_Error87_RequeriesAndRetries()
+    {
+        SetupOneActiveOneInactive();
+        var service = CreateServiceWithNoRetryDelay();
+
+        var queryCount = 0;
+        A.CallTo(() => _api.QueryConfig(A<QueryDisplayConfigFlags>._))
+            .ReturnsLazily(() =>
+            {
+                queryCount++;
+                // Return the same valid config each time
+                var paths = new[]
+                {
+                    MakeActivePath(Adapter1, targetId: 10, sourceId: 0, sourceModeIdx: 0, targetModeIdx: 1),
+                    MakeInactivePath(Adapter1, targetId: 20, sourceId: 1),
+                };
+                var modes = new[]
+                {
+                    MakeSourceMode(Adapter1, 0, 3840, 2160, 0, 0),
+                    MakeTargetMode(Adapter1, 10, 120000, 1000),
+                };
+                return (paths, modes);
+            });
+
+        var applyCount = 0;
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .Invokes(() =>
+            {
+                applyCount++;
+                if (applyCount == 1)
+                    throw new Win32Exception(ERROR_INVALID_PARAMETER);
+            });
+
+        await service.EnableMonitorAsync("DEL4321");
+
+        applyCount.ShouldBe(2);
+        // Initial query for GetMonitorsAsync + first buildConfig + re-query on error 87
+        queryCount.ShouldBeGreaterThanOrEqualTo(3);
+    }
+
+    [Fact]
+    public async Task EnableMonitorAsync_ExhaustsRetries_Throws()
+    {
+        SetupOneActiveOneInactive();
+        var service = CreateServiceWithNoRetryDelay();
+
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .Throws(() => new Win32Exception(ERROR_GEN_FAILURE));
+
+        await Should.ThrowAsync<Win32Exception>(() => service.EnableMonitorAsync("DEL4321"));
+
+        // 1 initial + 3 retries = 4 total attempts
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .MustHaveHappened(4, Times.Exactly);
+    }
+
+    [Fact]
+    public async Task SoloMonitorAsync_ExhaustsRetries_Throws()
+    {
+        SetupTwoMonitorConfig();
+        var service = CreateServiceWithNoRetryDelay();
+
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .Throws(() => new Win32Exception(ERROR_GEN_FAILURE));
+
+        await Should.ThrowAsync<Win32Exception>(() => service.SoloMonitorAsync("DEL4321"));
+
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .MustHaveHappened(4, Times.Exactly);
+    }
+
+    [Fact]
+    public async Task EnableMonitorAsync_NonRetryableError_ThrowsImmediately()
+    {
+        SetupOneActiveOneInactive();
+        var service = CreateServiceWithNoRetryDelay();
+
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .Throws(() => new Win32Exception(5)); // ERROR_ACCESS_DENIED — not retryable
+
+        await Should.ThrowAsync<Win32Exception>(() => service.EnableMonitorAsync("DEL4321"));
+
         A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
             .MustHaveHappenedOnceExactly();
     }

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.Versioning;
 using HaPcRemote.Service.Models;
 using HaPcRemote.Service.Native;
@@ -185,15 +186,16 @@ internal sealed class WindowsMonitorService : IMonitorService
 
         _logger.LogInformation("Enabling monitor: {Name} ({Id})", target.MonitorName, target.MonitorId);
 
-        var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);
-        var idx = FindPathIndex(paths, ResolveTargetKey(target));
-
-        paths[idx].flags |= DISPLAYCONFIG_PATH_FLAGS.ACTIVE;
-        // Invalidate mode indexes so Windows picks best available mode
-        paths[idx].sourceInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
-        paths[idx].targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
-
-        Apply(paths, modes);
+        var targetKey = ResolveTargetKey(target);
+        ApplyWithRetry(() =>
+        {
+            var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);
+            var idx = FindPathIndex(paths, targetKey);
+            paths[idx].flags |= DISPLAYCONFIG_PATH_FLAGS.ACTIVE;
+            paths[idx].sourceInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+            paths[idx].targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+            return (paths, modes);
+        });
         InvalidateCache();
     }
 
@@ -210,12 +212,14 @@ internal sealed class WindowsMonitorService : IMonitorService
 
         _logger.LogInformation("Disabling monitor: {Name} ({Id})", target.MonitorName, target.MonitorId);
 
-        var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);
-        var idx = FindPathIndex(paths, ResolveTargetKey(target));
-
-        paths[idx].flags &= ~DISPLAYCONFIG_PATH_FLAGS.ACTIVE;
-
-        Apply(paths, modes);
+        var targetKey = ResolveTargetKey(target);
+        ApplyWithRetry(() =>
+        {
+            var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);
+            var idx = FindPathIndex(paths, targetKey);
+            paths[idx].flags &= ~DISPLAYCONFIG_PATH_FLAGS.ACTIVE;
+            return (paths, modes);
+        });
         InvalidateCache();
     }
 
@@ -225,10 +229,23 @@ internal sealed class WindowsMonitorService : IMonitorService
         var target = FindMonitor(monitors, id);
         _logger.LogInformation("Setting primary monitor: {Name} ({Id})", target.MonitorName, target.MonitorId);
 
-        var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ONLY_ACTIVE_PATHS);
-        var targetKey = ResolveTargetKey(target);
+        // Check if already primary before entering retry loop
+        if (target.IsPrimary)
+        {
+            _logger.LogDebug("Monitor {Id} is already primary", id);
+            return;
+        }
 
-        // Find the source mode for the target monitor
+        var targetKey = ResolveTargetKey(target);
+        ApplyWithRetry(() => BuildSetPrimaryConfig(targetKey, id));
+        InvalidateCache();
+    }
+
+    private (DISPLAYCONFIG_PATH_INFO[] Paths, DISPLAYCONFIG_MODE_INFO[] Modes) BuildSetPrimaryConfig(
+        (LUID adapterId, uint targetId) targetKey, string id)
+    {
+        var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ONLY_ACTIVE_PATHS);
+
         POINTL targetPosition = default;
         uint? targetSourceIdx = null;
 
@@ -247,14 +264,6 @@ internal sealed class WindowsMonitorService : IMonitorService
         if (!targetSourceIdx.HasValue)
             throw new InvalidOperationException($"Could not find source mode for monitor '{id}'.");
 
-        // Already primary
-        if (targetPosition.x == 0 && targetPosition.y == 0)
-        {
-            _logger.LogDebug("Monitor {Id} is already primary", id);
-            return;
-        }
-
-        // Offset all source modes so the target ends up at (0,0)
         var offsetX = targetPosition.x;
         var offsetY = targetPosition.y;
 
@@ -267,8 +276,7 @@ internal sealed class WindowsMonitorService : IMonitorService
             }
         }
 
-        Apply(paths, modes);
-        InvalidateCache();
+        return (paths, modes);
     }
 
     public async Task SoloMonitorAsync(string id)
@@ -278,40 +286,8 @@ internal sealed class WindowsMonitorService : IMonitorService
 
         _logger.LogInformation("Solo monitor: {Name} ({Id})", target.MonitorName, target.MonitorId);
 
-        var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);
         var targetKey = ResolveTargetKey(target);
-
-        var activeCount = 0;
-        var inactiveCount = 0;
-
-        // Single pass: activate target, deactivate others
-        for (var i = 0; i < paths.Length; i++)
-        {
-            var isTarget = paths[i].targetInfo.adapterId == targetKey.adapterId
-                           && paths[i].targetInfo.id == targetKey.targetId;
-
-            if (isTarget)
-            {
-                paths[i].flags |= DISPLAYCONFIG_PATH_FLAGS.ACTIVE;
-                // Let Windows pick best mode
-                paths[i].sourceInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
-                paths[i].targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
-                activeCount++;
-            }
-            else
-            {
-                paths[i].flags &= ~DISPLAYCONFIG_PATH_FLAGS.ACTIVE;
-                // Invalidate mode indices for deactivated paths
-                paths[i].sourceInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
-                paths[i].targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
-                inactiveCount++;
-            }
-        }
-
-        _logger.LogDebug("Solo applying: {Active} active, {Inactive} inactive paths for target {Id}",
-            activeCount, inactiveCount, target.MonitorId);
-
-        Apply(paths, modes);
+        ApplyWithRetry(() => BuildSoloConfig(targetKey, target.MonitorId));
         InvalidateCache();
 
         // Verify
@@ -324,6 +300,41 @@ internal sealed class WindowsMonitorService : IMonitorService
         }
     }
 
+    private (DISPLAYCONFIG_PATH_INFO[] Paths, DISPLAYCONFIG_MODE_INFO[] Modes) BuildSoloConfig(
+        (LUID adapterId, uint targetId) targetKey, string monitorId)
+    {
+        var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);
+
+        var activeCount = 0;
+        var inactiveCount = 0;
+
+        for (var i = 0; i < paths.Length; i++)
+        {
+            var isTarget = paths[i].targetInfo.adapterId == targetKey.adapterId
+                           && paths[i].targetInfo.id == targetKey.targetId;
+
+            if (isTarget)
+            {
+                paths[i].flags |= DISPLAYCONFIG_PATH_FLAGS.ACTIVE;
+                paths[i].sourceInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+                paths[i].targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+                activeCount++;
+            }
+            else
+            {
+                paths[i].flags &= ~DISPLAYCONFIG_PATH_FLAGS.ACTIVE;
+                paths[i].sourceInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+                paths[i].targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+                inactiveCount++;
+            }
+        }
+
+        _logger.LogDebug("Solo applying: {Active} active, {Inactive} inactive paths for target {Id}",
+            activeCount, inactiveCount, monitorId);
+
+        return (paths, modes);
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────
 
     internal void InvalidateCache()
@@ -331,7 +342,15 @@ internal sealed class WindowsMonitorService : IMonitorService
         _cachedMonitors = null;
     }
 
-    private void Apply(DISPLAYCONFIG_PATH_INFO[] paths, DISPLAYCONFIG_MODE_INFO[] modes)
+    internal int[] RetryDelaysMs = [500, 1000, 2000];
+
+    /// <summary>
+    /// Applies a display config change with retry logic for transient driver errors.
+    /// Error 31 (GEN_FAILURE): transient driver timing — wait and retry with same config.
+    /// Error 87 (INVALID_PARAMETER): stale adapter LUIDs — re-query and rebuild config via <paramref name="buildConfig"/>.
+    /// </summary>
+    private void ApplyWithRetry(
+        Func<(DISPLAYCONFIG_PATH_INFO[] Paths, DISPLAYCONFIG_MODE_INFO[] Modes)> buildConfig)
     {
         const SetDisplayConfigFlags flags =
             SetDisplayConfigFlags.SDC_APPLY
@@ -339,7 +358,33 @@ internal sealed class WindowsMonitorService : IMonitorService
             | SetDisplayConfigFlags.SDC_ALLOW_CHANGES
             | SetDisplayConfigFlags.SDC_SAVE_TO_DATABASE;
 
-        _api.ApplyConfig(paths, modes, flags);
+        var (paths, modes) = buildConfig();
+
+        for (var attempt = 0;; attempt++)
+        {
+            try
+            {
+                _api.ApplyConfig(paths, modes, flags);
+                return;
+            }
+            catch (Win32Exception ex) when (attempt < RetryDelaysMs.Length &&
+                                            (ex.NativeErrorCode == ERROR_GEN_FAILURE ||
+                                             ex.NativeErrorCode == ERROR_INVALID_PARAMETER))
+            {
+                var delay = RetryDelaysMs[attempt];
+                _logger.LogWarning(
+                    "SetDisplayConfig failed with error {Code} on attempt {Attempt}, retrying in {Delay}ms",
+                    ex.NativeErrorCode, attempt + 1, delay);
+
+                Thread.Sleep(delay);
+
+                if (ex.NativeErrorCode == ERROR_INVALID_PARAMETER)
+                {
+                    _logger.LogDebug("Re-querying display config due to stale adapter IDs");
+                    (paths, modes) = buildConfig();
+                }
+            }
+        }
     }
 
     private static int FindPathIndex(DISPLAYCONFIG_PATH_INFO[] paths, (LUID adapterId, uint targetId) targetKey)
