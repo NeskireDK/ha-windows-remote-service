@@ -12,6 +12,13 @@ public sealed class PcRemoteOptions
     public Dictionary<string, ModeConfig> Modes { get; set; } = new();
     public PowerSettings Power { get; set; } = new();
     public SteamConfig Steam { get; set; } = new();
+    public DisplaySwitchingMode DisplaySwitching { get; set; } = DisplaySwitchingMode.Direct;
+}
+
+public enum DisplaySwitchingMode
+{
+    Direct,
+    Compatible
 }
 
 public sealed class PowerSettings

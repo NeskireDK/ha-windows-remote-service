@@ -34,4 +34,7 @@ public interface IConfigurationWriter
 
     /// <summary>Add or update a single app definition by key.</summary>
     void SaveApp(string key, AppDefinitionOptions app);
+
+    /// <summary>Update the display switching mode.</summary>
+    void SaveDisplaySwitching(DisplaySwitchingMode mode);
 }

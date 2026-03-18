@@ -62,6 +62,9 @@ public sealed class ConfigurationWriter(string configPath) : IConfigurationWrite
     public void SaveApp(string key, AppDefinitionOptions app)
         => ModifyAndWrite(o => o.Apps[key] = app);
 
+    public void SaveDisplaySwitching(DisplaySwitchingMode mode)
+        => ModifyAndWrite(o => o.DisplaySwitching = mode);
+
 
     private void ModifyAndWrite(Action<PcRemoteOptions> modifier)
     {
