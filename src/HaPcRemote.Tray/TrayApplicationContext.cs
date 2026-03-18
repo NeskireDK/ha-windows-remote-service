@@ -6,7 +6,6 @@ using HaPcRemote.Service.Configuration;
 using HaPcRemote.Tray.Forms;
 using HaPcRemote.Tray.Logging;
 using HaPcRemote.Tray.Models;
-using HaPcRemote.Tray.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -25,7 +24,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly CancellationTokenSource _webCts;
     private readonly ILogger _logger;
     private readonly InMemoryLogProvider _logProvider;
-    private readonly UpdateChecker _updateChecker;
+    private readonly IUpdateService _updateService;
     private readonly System.Windows.Forms.Timer _updateTimer;
     private readonly int _port;
     private readonly Func<IServiceProvider> _serviceAccessor;
@@ -43,7 +42,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private SettingsForm? _settingsForm;
     private ToolStripMenuItem? _updateMenuItem;
     private ToolStripMenuItem? _autoUpdateMenuItem;
-    private UpdateChecker.ReleaseInfo? _pendingRelease;
+    private ReleaseInfo? _pendingRelease;
 
     public TrayApplicationContext(Func<IServiceProvider> serviceAccessor, CancellationTokenSource webCts, InMemoryLogProvider logProvider)
     {
@@ -58,7 +57,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var options = webServices.GetRequiredService<IOptions<PcRemoteOptions>>().Value;
         _port = options.Port;
 
-        _updateChecker = new UpdateChecker(loggerFactory.CreateLogger<UpdateChecker>());
+        _updateService = webServices.GetRequiredService<IUpdateService>();
 
         var settings = TraySettings.Load();
         var logLevel = TabHelpers.ParseLogLevel(settings.LogLevel);
@@ -254,8 +253,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _updateMenuItem.Text = "Checking...";
         }
 
-        var settings = TraySettings.Load();
-        var release = await _updateChecker.CheckAsync(settings.IncludePrereleases, _cts.Token);
+        var release = await _updateService.CheckAsync(_cts.Token);
 
         if (release is null)
         {
@@ -302,7 +300,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
-    private async Task HandleDownloadAsync(UpdateChecker.ReleaseInfo release)
+    private async Task HandleDownloadAsync(ReleaseInfo release)
     {
         if (_updateMenuItem is null) return;
 
@@ -317,7 +315,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _updateMenuItem.Enabled = false;
             _updateMenuItem.Text = "Updating…";
 
-            if (await _updateChecker.DownloadAndInstallAsync(release, _cts.Token))
+            var result = await _updateService.ApplyAsync(release, _cts.Token);
+            if (result.Status == UpdateStatus.UpdateStarted)
             {
                 Application.Exit();
             }
@@ -344,7 +343,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private static string GetVersionString()
     {
-        var version = UpdateChecker.GetCurrentVersion();
+        var version = UpdateService.GetCurrentVersion();
         return version is null ? "" : $"v{version.ToString(3)}";
     }
 

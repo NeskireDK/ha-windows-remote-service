@@ -9,7 +9,15 @@ public interface IUpdateService
     /// Returns a result indicating what happened.
     /// </summary>
     Task<UpdateResult> CheckAndApplyAsync(CancellationToken ct = default);
+
+    /// <summary>Check for a newer release without installing. Returns null if up-to-date.</summary>
+    Task<ReleaseInfo?> CheckAsync(CancellationToken ct = default);
+
+    /// <summary>Download and install a previously found release.</summary>
+    Task<UpdateResult> ApplyAsync(ReleaseInfo release, CancellationToken ct = default);
 }
+
+public sealed record ReleaseInfo(string TagName, string InstallerUrl);
 
 public sealed class UpdateResult
 {

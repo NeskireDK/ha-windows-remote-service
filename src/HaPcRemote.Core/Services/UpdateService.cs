@@ -23,7 +23,28 @@ public sealed class UpdateService(IHttpClientFactory httpClientFactory, ILogger<
 
         try
         {
-            return await CheckAndApplyInternalAsync(ct);
+            ReleaseInfo? release;
+            try
+            {
+                release = await CheckAsync(ct);
+            }
+            catch (HttpRequestException ex)
+            {
+                logger.LogDebug(ex, "Update check skipped (network unavailable)");
+                return UpdateResult.Failed("Network unavailable");
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Update check failed");
+                return UpdateResult.Failed("Update check failed");
+            }
+
+            if (release is null)
+            {
+                var v = GetCurrentVersion();
+                return UpdateResult.UpToDate(v is not null ? FormatVersion(v) : "unknown");
+            }
+            return await ApplyAsync(release, ct);
         }
         finally
         {
@@ -31,35 +52,25 @@ public sealed class UpdateService(IHttpClientFactory httpClientFactory, ILogger<
         }
     }
 
-    private async Task<UpdateResult> CheckAndApplyInternalAsync(CancellationToken ct)
+    public async Task<ReleaseInfo?> CheckAsync(CancellationToken ct = default)
     {
         var currentVersion = GetCurrentVersion();
         var currentVersionStr = currentVersion is not null ? FormatVersion(currentVersion) : "unknown";
         var prerelease = IncludePrereleases;
 
-        logger.LogInformation("Update check starting - current: {CurrentVersion}, prereleases: {IncludePrereleases}",
+        logger.LogInformation("Update check starting — current: {CurrentVersion}, prereleases: {IncludePrereleases}",
             currentVersionStr, prerelease);
-        ReleaseInfo? release;
-        try
-        {
-            release = await CheckForUpdateAsync(currentVersion, prerelease, ct);
-        }
-        catch (HttpRequestException ex)
-        {
-            logger.LogDebug(ex, "Update check skipped (network unavailable)");
-            return UpdateResult.Failed("Network unavailable");
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Update check failed");
-            return UpdateResult.Failed("Update check failed");
-        }
 
+        var release = await CheckForUpdateAsync(currentVersion, prerelease, ct);
         if (release is null)
-        {
-            logger.LogInformation("No update found - already up to date at {CurrentVersion}", currentVersionStr);
-            return UpdateResult.UpToDate(currentVersionStr);
-        }
+            logger.LogInformation("No update found — already up to date at {CurrentVersion}", currentVersionStr);
+        return release;
+    }
+
+    public async Task<UpdateResult> ApplyAsync(ReleaseInfo release, CancellationToken ct = default)
+    {
+        var currentVersion = GetCurrentVersion();
+        var currentVersionStr = currentVersion is not null ? FormatVersion(currentVersion) : "unknown";
 
         try
         {
@@ -204,7 +215,6 @@ public sealed class UpdateService(IHttpClientFactory httpClientFactory, ILogger<
         return client;
     }
 
-    private sealed record ReleaseInfo(string TagName, string InstallerUrl);
 }
 
 // Internal DTOs for GitHub API — separate from Tray models
