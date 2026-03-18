@@ -149,6 +149,8 @@ public sealed class SteamService(
         // If Steam reports a non-zero, non-shortcut appId, use that instead
         if (steamAppId != 0 && !IsShortcutAppId(steamAppId))
         {
+            if (result != null)
+                logger.LogDebug("Overriding shortcut diagnostic result with standard game {AppId}", steamAppId);
             var name = _cachedGames?.Find(g => g.AppId == steamAppId)?.Name ?? $"Unknown ({steamAppId})";
             result = new SteamRunningGame { AppId = steamAppId, Name = name };
         }
