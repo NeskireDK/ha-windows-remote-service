@@ -246,9 +246,10 @@ public class UpdateServiceTests
     [Fact]
     public async Task CheckAndApply_ConcurrentCalls_SecondReturnsAlreadyInProgress()
     {
-        // Set up a slow handler so first call blocks
+        // Set up a slow handler so first call blocks; signals when HTTP is entered
+        var httpEntered = new SemaphoreSlim(0, 1);
         var tcs = new TaskCompletionSource<HttpResponseMessage>();
-        var handler = new BlockingHttpMessageHandler(tcs.Task);
+        var handler = new SignalingBlockingHttpMessageHandler(httpEntered, tcs.Task);
         var client = new HttpClient(handler);
         A.CallTo(() => _httpClientFactory.CreateClient("GitHubUpdate")).Returns(client);
 
@@ -257,8 +258,8 @@ public class UpdateServiceTests
         // Start first call (will block on HTTP)
         var first = svc.CheckAndApplyAsync();
 
-        // Small yield to ensure first call acquired the lock
-        await Task.Delay(50);
+        // Wait until the first call has entered the HTTP handler (and thus holds the lock)
+        await httpEntered.WaitAsync();
 
         // Second call should fail immediately
         var second = await svc.CheckAndApplyAsync();
@@ -519,6 +520,17 @@ public class UpdateServiceTests
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
+            return await gate.WaitAsync(ct);
+        }
+    }
+
+    private sealed class SignalingBlockingHttpMessageHandler(
+        SemaphoreSlim signal,
+        Task<HttpResponseMessage> gate) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            signal.Release(); // notify caller that HTTP has been entered (lock is held)
             return await gate.WaitAsync(ct);
         }
     }
