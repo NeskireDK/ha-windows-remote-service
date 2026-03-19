@@ -950,6 +950,18 @@ public class WindowsMonitorServiceTests
     }
 
     [Fact]
+    public async Task Compatible_DisableMonitorAsync_NoOpIfAlreadyInactive()
+    {
+        SetupOneActiveOneInactive();
+        var service = CreateCompatibleService();
+
+        await service.DisableMonitorAsync("DEL4321"); // already inactive
+
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .MustNotHaveHappened();
+    }
+
+    [Fact]
     public async Task Compatible_DisableMonitorAsync_ShufflesPrimaryFirst()
     {
         SetupTwoMonitorConfig();
