@@ -248,18 +248,18 @@ internal sealed class WindowsMonitorService : IMonitorService
     private (DISPLAYCONFIG_PATH_INFO[] Paths, DISPLAYCONFIG_MODE_INFO[] Modes) BuildEnableConfig(
         (LUID adapterId, uint targetId) targetKey)
     {
-        (DISPLAYCONFIG_PATH_INFO[] paths, DISPLAYCONFIG_MODE_INFO[] modes) config;
-        try
-        {
-            config = _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT);
-        }
-        catch (Win32Exception ex) when (ex.NativeErrorCode == ERROR_INVALID_PARAMETER)
-        {
-            _logger.LogDebug("QDC_DATABASE_CURRENT unavailable, falling back to QDC_ALL_PATHS");
-            config = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);
-        }
-
-        var (paths, modes) = config;
+        // TODO #121: Re-enable QDC_DATABASE_CURRENT with UI toggle
+        // Currently disabled — causes error 87 on SetDisplayConfig when no saved layout exists
+        // try
+        // {
+        //     config = _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT);
+        // }
+        // catch (Win32Exception ex) when (ex.NativeErrorCode == ERROR_INVALID_PARAMETER)
+        // {
+        //     _logger.LogDebug("QDC_DATABASE_CURRENT unavailable, falling back to QDC_ALL_PATHS");
+        //     config = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);
+        // }
+        var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);
         var idx = FindPathIndex(paths, targetKey);
         paths[idx].flags |= DISPLAYCONFIG_PATH_FLAGS.ACTIVE;
         paths[idx].sourceInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;

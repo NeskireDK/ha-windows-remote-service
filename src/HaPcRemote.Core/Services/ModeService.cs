@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using HaPcRemote.Service.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -38,7 +39,7 @@ public sealed class ModeService(
                     logger.LogInformation("Mode '{Mode}' applied on attempt {Attempt}", modeName, attempt + 1);
                 return;
             }
-            catch (Exception ex) when (attempt < MaxRetries)
+            catch (Exception ex) when (attempt < MaxRetries && IsTransientError(ex))
             {
                 var delay = baseDelay * (1 << attempt);
                 logger.LogWarning(
@@ -48,6 +49,14 @@ public sealed class ModeService(
             }
         }
     }
+
+    /// <summary>
+    /// Returns true for transient errors worth retrying at the mode level.
+    /// Error 87 (ERROR_INVALID_PARAMETER) is a configuration error — WindowsMonitorService
+    /// already retries internally. If it still fails, retrying at this level won't help. (#119)
+    /// </summary>
+    private static bool IsTransientError(Exception ex) =>
+        ex is not Win32Exception { NativeErrorCode: 87 /* ERROR_INVALID_PARAMETER */ };
 
     private async Task ApplyModeCoreAsync(ModeConfig config)
     {
