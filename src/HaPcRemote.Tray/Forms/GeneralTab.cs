@@ -20,6 +20,8 @@ internal sealed class GeneralTab : TabPage, ISettingsTab
     private readonly Button _portSaveButton;
     private readonly Label _soundVolumeViewLabel;
     private readonly ComboBox _displaySwitchingCombo;
+    private readonly NumericUpDown _displayDelayInput;
+    private readonly CheckBox _useSavedLayoutCheck;
     private readonly IConfigurationWriter _configWriter;
     private readonly int _currentPort;
 
@@ -111,6 +113,43 @@ internal sealed class GeneralTab : TabPage, ISettingsTab
             "Compatible: sequential steps with verification (use if Direct fails)"));
         layout.Controls.Add(MakeLabel("Display Switching:"), 0, row);
         layout.Controls.Add(displaySwitchingPanel, 1, row++);
+
+        // Display action retry delay
+        _displayDelayInput = new NumericUpDown
+        {
+            Minimum = 0,
+            Maximum = 5000,
+            Increment = 100,
+            Value = options.DisplayActionDelayMs,
+            Width = 80,
+            BackColor = Color.FromArgb(50, 50, 50),
+            ForeColor = Color.White
+        };
+        var displayDelayPanel = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, AutoSize = true };
+        displayDelayPanel.Controls.Add(_displayDelayInput);
+        displayDelayPanel.Controls.Add(MakeHelpIcon(_toolTip,
+            "Base delay (ms) before retrying failed display operations.\n" +
+            "Retries double the delay: 300 → 600 → 1200 → 2400.\n" +
+            "5 attempts total. 0 = no retry."));
+        layout.Controls.Add(MakeLabel("Display Retry Delay:"), 0, row);
+        layout.Controls.Add(displayDelayPanel, 1, row++);
+
+        // Saved layout toggle
+        _useSavedLayoutCheck = new CheckBox
+        {
+            Text = "Use Saved Layout",
+            ForeColor = Color.White,
+            AutoSize = true,
+            Checked = options.UseSavedLayout
+        };
+        var savedLayoutPanel = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, AutoSize = true };
+        savedLayoutPanel.Controls.Add(_useSavedLayoutCheck);
+        savedLayoutPanel.Controls.Add(MakeHelpIcon(_toolTip,
+            "Try to restore saved monitor positions, resolution, and refresh rate.\n" +
+            "On: use Windows saved layout (QDC_DATABASE_CURRENT), fall back to defaults if unavailable.\n" +
+            "Off: always let Windows pick defaults (QDC_ALL_PATHS)."));
+        layout.Controls.Add(new Label { AutoSize = true }, 0, row);
+        layout.Controls.Add(savedLayoutPanel, 1, row++);
 
         // Separator
         layout.Controls.Add(new Label { AutoSize = true, Height = 10 }, 0, row++);
@@ -285,6 +324,8 @@ internal sealed class GeneralTab : TabPage, ISettingsTab
         var displayMode = Enum.TryParse<DisplaySwitchingMode>(_displaySwitchingCombo.SelectedItem?.ToString(), out var dm)
             ? dm : DisplaySwitchingMode.Direct;
         _configWriter.SaveDisplaySwitching(displayMode);
+        _configWriter.SaveDisplayActionDelay((int)_displayDelayInput.Value);
+        _configWriter.SaveUseSavedLayout(_useSavedLayoutCheck.Checked);
     }
 
     private void OnCancel(object? sender, EventArgs e)
@@ -300,6 +341,9 @@ internal sealed class GeneralTab : TabPage, ISettingsTab
         _autoUpdateCheck.Checked = s.AutoUpdate;
         _includePrereleasesCheck.Checked = s.IncludePrereleases;
 
-        _displaySwitchingCombo.SelectedItem = _configWriter.Read().DisplaySwitching.ToString();
+        var current = _configWriter.Read();
+        _displaySwitchingCombo.SelectedItem = current.DisplaySwitching.ToString();
+        _displayDelayInput.Value = current.DisplayActionDelayMs;
+        _useSavedLayoutCheck.Checked = current.UseSavedLayout;
     }
 }

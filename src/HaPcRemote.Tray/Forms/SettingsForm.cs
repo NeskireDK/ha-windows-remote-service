@@ -16,6 +16,7 @@ internal sealed class SettingsForm : Form
     private readonly GamesTab _gamesTab;
     private readonly PowerTab _powerTab;
     private readonly LogTab _logTab;
+    private readonly DiagnosticsTab _diagnosticsTab;
     private readonly TabFooter _footer;
 
     public SettingsForm(
@@ -28,8 +29,9 @@ internal sealed class SettingsForm : Form
         MinimumSize = new Size(600, 450);
 
         var settings = TraySettings.Load();
+        var scaleFactor = DeviceDpi / 96f;
         Size = settings.SettingsWidth > 0 && settings.SettingsHeight > 0
-            ? new Size(settings.SettingsWidth, settings.SettingsHeight)
+            ? new Size((int)(settings.SettingsWidth * scaleFactor), (int)(settings.SettingsHeight * scaleFactor))
             : new Size(750, 550);
         StartPosition = FormStartPosition.CenterScreen;
         ShowInTaskbar = true;
@@ -50,12 +52,14 @@ internal sealed class SettingsForm : Form
         _gamesTab = new GamesTab(services);
         _powerTab = new PowerTab(services);
         _logTab = new LogTab(logProvider, port);
+        _diagnosticsTab = new DiagnosticsTab(services);
 
         _tabControl.TabPages.Add(_generalTab);
         _tabControl.TabPages.Add(_modesTab);
         _tabControl.TabPages.Add(_gamesTab);
         _tabControl.TabPages.Add(_powerTab);
         _tabControl.TabPages.Add(_logTab);
+        _tabControl.TabPages.Add(_diagnosticsTab);
 
         // Shared footer — buttons swap when the selected tab changes
         _footer = new TabFooter();
@@ -64,8 +68,8 @@ internal sealed class SettingsForm : Form
         _gamesTab.SetFooter(_footer);
         _powerTab.SetFooter(_footer);
 
-        Controls.Add(_tabControl);
         Controls.Add(_footer);
+        Controls.Add(_tabControl);
 
         SyncFooter();
     }
@@ -100,8 +104,9 @@ internal sealed class SettingsForm : Form
             e.Cancel = true;
 
             var s = TraySettings.Load();
-            s.SettingsWidth = Width;
-            s.SettingsHeight = Height;
+            var scaleFactor = DeviceDpi / 96f;
+            s.SettingsWidth = (int)(Width / scaleFactor);
+            s.SettingsHeight = (int)(Height / scaleFactor);
             s.Save();
 
             Hide();

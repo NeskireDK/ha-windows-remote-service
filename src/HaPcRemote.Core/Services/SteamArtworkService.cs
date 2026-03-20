@@ -22,7 +22,7 @@ internal static class SteamArtworkService
     {
         // For non-Steam shortcuts, use unsigned representation for filenames
         var fileId = SteamVdfParser.IsShortcutAppId(appId) ? ((uint)appId).ToString() : appId.ToString();
-        logger?.LogInformation("Artwork: lookup appId={AppId} fileId={FileId} isShortcut={IsShortcut}",
+        logger?.LogDebug("Artwork: lookup appId={AppId} fileId={FileId} isShortcut={IsShortcut}",
             appId, fileId, SteamVdfParser.IsShortcutAppId(appId));
 
         // Priority 1: Custom grid art (user-set posters)
@@ -41,7 +41,7 @@ internal static class SteamArtworkService
                         return path;
                     }
                 }
-                logger?.LogInformation("Artwork: not found in custom grid {GridDir}", gridDir);
+                logger?.LogDebug("Artwork: not found in custom grid {GridDir}", gridDir);
             }
             else
             {
@@ -50,7 +50,7 @@ internal static class SteamArtworkService
         }
         else
         {
-            logger?.LogInformation("Artwork: no steamUserId, skipping custom grid lookup");
+            logger?.LogDebug("Artwork: no steamUserId, skipping custom grid lookup");
         }
 
         // Priority 2: Steam local library cache (multiple filename variants)
@@ -72,7 +72,7 @@ internal static class SteamArtworkService
                     }
                 }
             }
-            logger?.LogInformation("Artwork: not found in library cache {CacheDir} (checked {Count} suffix variants)",
+            logger?.LogDebug("Artwork: not found in library cache {CacheDir} (checked {Count} suffix variants)",
                 cacheDir, libraryCacheSuffixes.Length);
         }
         else

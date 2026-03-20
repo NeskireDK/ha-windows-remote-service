@@ -10,7 +10,7 @@ public class SystemStateEndpointTests : EndpointTestBase
 {
     private static readonly List<AudioDevice> SpeakersDefault =
     [
-        new AudioDevice { Name = "Speakers", IsDefault = true, Volume = 50 }
+        new AudioDevice { Name = "Speakers", IsDefault = true, Volume = 50, IsConnected = true }
     ];
 
     private void SetupDefaults()

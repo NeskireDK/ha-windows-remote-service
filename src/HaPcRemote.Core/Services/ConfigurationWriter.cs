@@ -65,6 +65,11 @@ public sealed class ConfigurationWriter(string configPath) : IConfigurationWrite
     public void SaveDisplaySwitching(DisplaySwitchingMode mode)
         => ModifyAndWrite(o => o.DisplaySwitching = mode);
 
+    public void SaveDisplayActionDelay(int delayMs)
+        => ModifyAndWrite(o => o.DisplayActionDelayMs = Math.Max(0, delayMs));
+
+    public void SaveUseSavedLayout(bool useSavedLayout)
+        => ModifyAndWrite(o => o.UseSavedLayout = useSavedLayout);
 
     private void ModifyAndWrite(Action<PcRemoteOptions> modifier)
     {

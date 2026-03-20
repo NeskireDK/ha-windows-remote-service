@@ -158,7 +158,7 @@ internal sealed class ModesTab : TabPage, ISettingsTab
             _soloMonitorCombo.Items.Add(new MonitorDropdownItem(null, "(Don't change)"));
             var monitors = await _monitorService.GetMonitorsAsync();
             foreach (var m in monitors)
-                _soloMonitorCombo.Items.Add(new MonitorDropdownItem(m.MonitorId, $"{m.Name} ({m.MonitorId})"));
+                _soloMonitorCombo.Items.Add(new MonitorDropdownItem(m.MonitorId, $"{m.MonitorName} ({m.MonitorId})"));
         }
         catch (Exception ex)
         {

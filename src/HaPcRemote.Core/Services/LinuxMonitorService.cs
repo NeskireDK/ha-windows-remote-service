@@ -43,7 +43,7 @@ public sealed partial class LinuxMonitorService(
 
         if (monitor.IsActive)
         {
-            logger.LogInformation("Monitor '{Id}' is already enabled, skipping", id);
+            logger.LogDebug("Monitor '{Id}' is already enabled, skipping", id);
             return;
         }
 
@@ -57,7 +57,7 @@ public sealed partial class LinuxMonitorService(
 
         if (!monitor.IsActive)
         {
-            logger.LogInformation("Monitor '{Id}' is already disabled, skipping", id);
+            logger.LogDebug("Monitor '{Id}' is already disabled, skipping", id);
             return;
         }
 

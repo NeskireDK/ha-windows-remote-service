@@ -19,7 +19,9 @@ public static class HostBootstrapExtensions
                 options.ToolsPath = Path.GetFullPath(options.ToolsPath, baseDir);
             foreach (var app in options.Apps.Values)
             {
-                if (!string.IsNullOrEmpty(app.ExePath) && !Path.IsPathRooted(app.ExePath))
+                if (!string.IsNullOrEmpty(app.ExePath)
+                    && !Path.IsPathRooted(app.ExePath)
+                    && !DirectAppLauncher.IsProtocolUri(app.ExePath))
                     app.ExePath = Path.GetFullPath(app.ExePath, baseDir);
             }
         });

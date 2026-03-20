@@ -78,7 +78,8 @@ public sealed class LinuxAudioService(ICliRunner cliRunner, ILogger<LinuxAudioSe
             {
                 Name = name,
                 IsDefault = isDefault,
-                Volume = 0 // pactl list sinks short does not include volume; would need verbose output
+                Volume = 0, // pactl list sinks short does not include volume; would need verbose output
+                IsConnected = true // pactl only reports active (running/idle/suspended) sinks
             });
         }
         return devices;

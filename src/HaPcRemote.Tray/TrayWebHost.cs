@@ -20,6 +20,7 @@ internal static class TrayWebHost
 
         // Logging — file + in-memory (shared with tray log viewer)
         builder.Logging.ClearProviders();
+        builder.Logging.SetMinimumLevel(LogLevel.Trace); // pass everything through; custom providers filter by their own MinimumLevel
         builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
         builder.Logging.AddProvider(new FileLoggerProvider(ConfigPaths.GetLogFilePath()));
         builder.Logging.AddProvider(logProvider);
@@ -108,6 +109,7 @@ internal static class TrayWebHost
         app.MapSteamEndpoints();
         app.MapArtworkDebugEndpoints();
         app.MapPowerEndpoints();
+        app.MapDisplayEndpoints();
 
         return app;
     }

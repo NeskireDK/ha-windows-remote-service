@@ -37,6 +37,8 @@ namespace HaPcRemote.Service;
 [JsonSerializable(typeof(ApiResponse<SystemState>))]
 [JsonSerializable(typeof(PowerConfig))]
 [JsonSerializable(typeof(ApiResponse<PowerConfig>))]
+[JsonSerializable(typeof(DisplayConfig))]
+[JsonSerializable(typeof(ApiResponse<DisplayConfig>))]
 [JsonSerializable(typeof(UpdateResult))]
 [JsonSerializable(typeof(ApiResponse<UpdateResult>))]
 [JsonSerializable(typeof(RunningGameDiagnostics))]

@@ -60,6 +60,7 @@ internal sealed class WindowsMonitorService : IMonitorService
     {
         _logger.LogDebug("QueryMonitors: starting enumeration");
         var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);
+        var savedKeys = ProbeSavedLayoutKeys();
         var monitors = new List<MonitorInfo>();
         var seen = new HashSet<(LUID adapterId, uint targetId)>();
         var edidCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -68,11 +69,14 @@ internal sealed class WindowsMonitorService : IMonitorService
 
         _logger.LogDebug("QueryMonitors: processing {Count} paths", paths.Length);
 
+        var unavailableCount = 0;
+        var duplicateCount = 0;
+
         foreach (var path in paths)
         {
             if (path.targetInfo.targetAvailable == 0)
             {
-                _logger.LogDebug("  Skipping unavailable target {TargetId}", path.targetInfo.id);
+                unavailableCount++;
                 continue;
             }
 
@@ -97,7 +101,7 @@ internal sealed class WindowsMonitorService : IMonitorService
                 }
                 else
                 {
-                    _logger.LogDebug("  Skipping duplicate target {TargetId} (active={Active})", path.targetInfo.id, isActive);
+                    duplicateCount++;
                     continue;
                 }
             }
@@ -168,10 +172,12 @@ internal sealed class WindowsMonitorService : IMonitorService
                 DisplayFrequency = hz,
                 IsActive = isActive,
                 IsPrimary = isPrimary,
+                HasSavedLayout = savedKeys.Contains(key),
             });
         }
 
-        _logger.LogInformation("QueryMonitors: found {Count} monitors", monitors.Count);
+        _logger.LogDebug("QueryMonitors: skipped {Unavailable} unavailable and {Duplicate} duplicate paths", unavailableCount, duplicateCount);
+        _logger.LogDebug("QueryMonitors: found {Count} monitors", monitors.Count);
         foreach (var m in monitors)
             _logger.LogDebug("  {Id}: \"{Name}\" ({Gdi}) {W}x{H}@{Hz}Hz active={Active} primary={Primary}",
                 m.MonitorId, m.MonitorName, m.Name, m.Width, m.Height, m.DisplayFrequency, m.IsActive, m.IsPrimary);
@@ -190,13 +196,14 @@ internal sealed class WindowsMonitorService : IMonitorService
 
         if (target.IsActive)
         {
-            _logger.LogInformation("Monitor '{Id}' is already enabled, skipping", id);
+            _logger.LogDebug("Monitor '{Id}' is already enabled, skipping", id);
             return;
         }
 
         _logger.LogInformation("Enabling monitor: {Name} ({Id})", target.MonitorName, target.MonitorId);
 
         var targetKey = ResolveTargetKey(target);
+        // TODO #121: SDC_TOPOLOGY_EXTEND removed — causes error 87 with SDC_USE_SUPPLIED_DISPLAY_CONFIG. Investigate proper topology handling.
         ApplyWithRetry(() => BuildEnableConfig(targetKey));
         InvalidateCache();
     }
@@ -210,7 +217,7 @@ internal sealed class WindowsMonitorService : IMonitorService
 
         if (!target.IsActive)
         {
-            _logger.LogInformation("Monitor '{Id}' is already disabled, skipping", id);
+            _logger.LogDebug("Monitor '{Id}' is already disabled, skipping", id);
             return;
         }
 
@@ -241,14 +248,44 @@ internal sealed class WindowsMonitorService : IMonitorService
         InvalidateCache();
     }
 
+    private (DISPLAYCONFIG_PATH_INFO[] Paths, DISPLAYCONFIG_MODE_INFO[] Modes, bool UsedDatabase)
+        QueryConfigWithFallback((LUID adapterId, uint targetId) requiredTarget)
+    {
+        if (_options.CurrentValue.UseSavedLayout)
+        {
+            try
+            {
+                var (dbPaths, dbModes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT);
+                if (ContainsTarget(dbPaths, requiredTarget))
+                    return (dbPaths, dbModes, true);
+
+                _logger.LogDebug("Target not in QDC_DATABASE_CURRENT result, falling back to QDC_ALL_PATHS");
+            }
+            catch (Win32Exception ex) when (ex.NativeErrorCode == ERROR_INVALID_PARAMETER)
+            {
+                _logger.LogDebug("QDC_DATABASE_CURRENT unavailable, falling back to QDC_ALL_PATHS");
+            }
+        }
+
+        var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);
+        return (paths, modes, false);
+    }
+
+    private static bool ContainsTarget(DISPLAYCONFIG_PATH_INFO[] paths, (LUID adapterId, uint targetId) key) =>
+        Array.Exists(paths, p => p.targetInfo.adapterId == key.adapterId && p.targetInfo.id == key.targetId);
+
     private (DISPLAYCONFIG_PATH_INFO[] Paths, DISPLAYCONFIG_MODE_INFO[] Modes) BuildEnableConfig(
         (LUID adapterId, uint targetId) targetKey)
     {
-        var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);
+        var (paths, modes, usedDatabase) = QueryConfigWithFallback(targetKey);
+
         var idx = FindPathIndex(paths, targetKey);
         paths[idx].flags |= DISPLAYCONFIG_PATH_FLAGS.ACTIVE;
-        paths[idx].sourceInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
-        paths[idx].targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+        if (!usedDatabase)
+        {
+            paths[idx].sourceInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+            paths[idx].targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+        }
         return (paths, modes);
     }
 
@@ -342,7 +379,7 @@ internal sealed class WindowsMonitorService : IMonitorService
     private (DISPLAYCONFIG_PATH_INFO[] Paths, DISPLAYCONFIG_MODE_INFO[] Modes) BuildSoloConfig(
         (LUID adapterId, uint targetId) targetKey, string monitorId)
     {
-        var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);
+        var (paths, modes, usedDatabase) = QueryConfigWithFallback(targetKey);
 
         var activeCount = 0;
         var inactiveCount = 0;
@@ -355,8 +392,11 @@ internal sealed class WindowsMonitorService : IMonitorService
             if (isTarget)
             {
                 paths[i].flags |= DISPLAYCONFIG_PATH_FLAGS.ACTIVE;
-                paths[i].sourceInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
-                paths[i].targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+                if (!usedDatabase)
+                {
+                    paths[i].sourceInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+                    paths[i].targetInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
+                }
                 activeCount++;
             }
             else
@@ -433,13 +473,14 @@ internal sealed class WindowsMonitorService : IMonitorService
 
         if (target.IsActive)
         {
-            _logger.LogInformation("Monitor '{Id}' is already enabled, skipping (compatible)", id);
+            _logger.LogDebug("Monitor '{Id}' is already enabled, skipping (compatible)", id);
             return;
         }
 
         _logger.LogInformation("Enabling monitor (compatible): {Name} ({Id})", target.MonitorName, target.MonitorId);
 
         var targetKey = ResolveTargetKey(target);
+        // TODO #121: SDC_TOPOLOGY_EXTEND removed — causes error 87 with SDC_USE_SUPPLIED_DISPLAY_CONFIG. Investigate proper topology handling.
         await ApplyStepWithVerification(
             () => BuildEnableConfig(targetKey),
             () => FindMonitor(QueryMonitors(), id).IsActive,
@@ -481,7 +522,7 @@ internal sealed class WindowsMonitorService : IMonitorService
 
         if (!target.IsActive)
         {
-            _logger.LogInformation("Monitor '{Id}' is already disabled, skipping (compatible)", id);
+            _logger.LogDebug("Monitor '{Id}' is already disabled, skipping (compatible)", id);
             return;
         }
 
@@ -508,11 +549,12 @@ internal sealed class WindowsMonitorService : IMonitorService
     private async Task ApplyStepWithVerification(
         Func<(DISPLAYCONFIG_PATH_INFO[] Paths, DISPLAYCONFIG_MODE_INFO[] Modes)> buildConfig,
         Func<bool> verify,
-        string stepName)
+        string stepName,
+        SetDisplayConfigFlags extraFlags = 0)
     {
         for (var attempt = 0; attempt < MaxVerifyAttempts; attempt++)
         {
-            ApplyWithRetry(buildConfig);
+            ApplyWithRetry(buildConfig, extraFlags);
             InvalidateCache();
 
             if (attempt > 0 && StepDelayMs > 0)
@@ -540,6 +582,28 @@ internal sealed class WindowsMonitorService : IMonitorService
         return QueryMonitors();
     }
 
+    // ── Saved layout probe ─────────────────────────────────────────────
+
+    private HashSet<(LUID adapterId, uint targetId)> ProbeSavedLayoutKeys()
+    {
+        try
+        {
+            var (dbPaths, _) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT);
+            return new HashSet<(LUID adapterId, uint targetId)>(
+                dbPaths.Select(p => (p.targetInfo.adapterId, p.targetInfo.id)));
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == ERROR_INVALID_PARAMETER)
+        {
+            _logger.LogDebug("QDC_DATABASE_CURRENT unavailable — no saved layouts");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ProbeSavedLayoutKeys: unexpected error, HasSavedLayout will be false");
+        }
+
+        return [];
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────
 
     internal void InvalidateCache()
@@ -556,13 +620,15 @@ internal sealed class WindowsMonitorService : IMonitorService
     /// Error 87 (INVALID_PARAMETER): stale adapter LUIDs — re-query and rebuild config via <paramref name="buildConfig"/>.
     /// </summary>
     private void ApplyWithRetry(
-        Func<(DISPLAYCONFIG_PATH_INFO[] Paths, DISPLAYCONFIG_MODE_INFO[] Modes)> buildConfig)
+        Func<(DISPLAYCONFIG_PATH_INFO[] Paths, DISPLAYCONFIG_MODE_INFO[] Modes)> buildConfig,
+        SetDisplayConfigFlags extraFlags = 0)
     {
-        const SetDisplayConfigFlags flags =
+        var flags =
             SetDisplayConfigFlags.SDC_APPLY
             | SetDisplayConfigFlags.SDC_USE_SUPPLIED_DISPLAY_CONFIG
             | SetDisplayConfigFlags.SDC_ALLOW_CHANGES
-            | SetDisplayConfigFlags.SDC_SAVE_TO_DATABASE;
+            | SetDisplayConfigFlags.SDC_SAVE_TO_DATABASE
+            | extraFlags;
 
         var (paths, modes) = buildConfig();
 

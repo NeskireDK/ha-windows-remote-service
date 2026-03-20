@@ -17,7 +17,7 @@ public sealed class SteamService(
     private readonly Func<int, Task> _delay = delay ?? (ms => Task.Delay(ms));
     private List<SteamGame>? _cachedGames;
     private DateTime _cacheExpiry;
-    private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(1);
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
     private readonly SemaphoreSlim _cacheLock = new(1, 1);
     private IReadOnlyList<string>? _libraryFolders;
 

@@ -63,7 +63,7 @@ public sealed class UpdateService(IHttpClientFactory httpClientFactory, ILogger<
 
         var release = await CheckForUpdateAsync(currentVersion, prerelease, ct);
         if (release is null)
-            logger.LogInformation("No update found — already up to date at {CurrentVersion}", currentVersionStr);
+            logger.LogDebug("No update found — already up to date at {CurrentVersion}", currentVersionStr);
         return release;
     }
 
@@ -182,10 +182,13 @@ public sealed class UpdateService(IHttpClientFactory httpClientFactory, ILogger<
         if (dashIdx >= 0)
         {
             var suffix = cleaned[(dashIdx + 1)..];
-            // Extract trailing number from prerelease suffix (e.g. "rc.3" → 3, "beta.1" → 1)
+            // Extract trailing number from prerelease suffix
+            // Handles both "rc.3" (dot-separated) and "rc3" (concatenated) formats
             var dotIdx = suffix.LastIndexOf('.');
             if (dotIdx >= 0 && int.TryParse(suffix[(dotIdx + 1)..], out var n))
                 prerelease = n;
+            else if (TrailingDigits(suffix) is { } digits && int.TryParse(digits, out var m))
+                prerelease = m;
             else
                 prerelease = 0; // e.g. "beta" with no number
 
@@ -206,6 +209,13 @@ public sealed class UpdateService(IHttpClientFactory httpClientFactory, ILogger<
         v.Revision == int.MaxValue
             ? v.ToString(3)
             : $"{v.Major}.{v.Minor}.{v.Build}-rc.{v.Revision}";
+
+    private static string? TrailingDigits(string s)
+    {
+        var i = s.Length;
+        while (i > 0 && char.IsAsciiDigit(s[i - 1])) i--;
+        return i < s.Length ? s[i..] : null;
+    }
 
     private HttpClient CreateHttpClient()
     {

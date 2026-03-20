@@ -8,7 +8,7 @@ public class AudioService(IOptionsMonitor<PcRemoteOptions> options, ICliRunner c
 {
     public async Task<List<AudioDevice>> GetDevicesAsync()
     {
-        var output = await cliRunner.RunAsync(GetExePath(), ["/scomma", "", "/Columns", "Type,Name,Direction,Default,Volume Percent"]);
+        var output = await cliRunner.RunAsync(GetExePath(), ["/scomma", "", "/Columns", "Type,Name,Direction,Default,Volume Percent,Status"]);
         return ParseCsvOutput(output);
     }
 
@@ -54,7 +54,7 @@ public class AudioService(IOptionsMonitor<PcRemoteOptions> options, ICliRunner c
                 continue;
 
             // Columns selected via /Columns flag:
-            // [0] Type, [1] Name, [2] Direction, [3] Default (Console), [4] Volume Percent
+            // [0] Type, [1] Name, [2] Direction, [3] Default (Console), [4] Volume Percent, [5] Status
 
             // Only include hardware sound card devices; exclude Application/Subunit entries
             // (virtual audio devices created by apps, software mixers, etc.)
@@ -67,11 +67,13 @@ public class AudioService(IOptionsMonitor<PcRemoteOptions> options, ICliRunner c
             if (!seen.Add(columns[1]))
                 continue;
 
+            var status = columns.Count > 5 ? columns[5].Trim() : string.Empty;
             devices.Add(new AudioDevice
             {
                 Name = columns[1],
                 IsDefault = string.Equals(columns[3], "Render", StringComparison.OrdinalIgnoreCase),
-                Volume = ParseVolumePercent(columns[4])
+                Volume = ParseVolumePercent(columns[4]),
+                IsConnected = string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase)
             });
         }
         return devices;

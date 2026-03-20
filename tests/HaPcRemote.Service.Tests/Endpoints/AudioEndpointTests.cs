@@ -10,8 +10,8 @@ public class AudioEndpointTests : EndpointTestBase
 {
     private static readonly List<AudioDevice> TwoDevices =
     [
-        new AudioDevice { Name = "Speakers", IsDefault = true, Volume = 50 },
-        new AudioDevice { Name = "Headphones", IsDefault = false, Volume = 75 }
+        new AudioDevice { Name = "Speakers", IsDefault = true, Volume = 50, IsConnected = true },
+        new AudioDevice { Name = "Headphones", IsDefault = false, Volume = 75, IsConnected = true }
     ];
 
     [Fact]

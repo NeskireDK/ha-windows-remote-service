@@ -13,12 +13,13 @@ public class ModeServiceTests
     private readonly IMonitorService _monitorService = A.Fake<IMonitorService>();
     private readonly IAppService _appService = A.Fake<IAppService>();
 
-    private ModeService CreateService(Dictionary<string, ModeConfig>? modes = null)
+    private ModeService CreateService(Dictionary<string, ModeConfig>? modes = null, int displayActionDelayMs = 0)
     {
         var options = A.Fake<IOptionsMonitor<PcRemoteOptions>>();
         A.CallTo(() => options.CurrentValue).Returns(new PcRemoteOptions
         {
-            Modes = modes ?? new Dictionary<string, ModeConfig>()
+            Modes = modes ?? new Dictionary<string, ModeConfig>(),
+            DisplayActionDelayMs = displayActionDelayMs
         });
         return new ModeService(options, _audioService, _monitorService, _appService, A.Fake<ILogger<ModeService>>());
     }
@@ -273,6 +274,64 @@ public class ModeServiceTests
         });
 
         await service.ApplyModeAsync("solo");
+
+        A.CallTo(() => _monitorService.SoloMonitorAsync("GSM59A4"))
+            .MustHaveHappenedOnceExactly();
+    }
+
+    // ── ApplyModeAsync — retry logic ──────────────────────────────────
+
+    [Fact]
+    public async Task ApplyModeAsync_TransientFailure_RetriesAndSucceeds()
+    {
+        var callCount = 0;
+        A.CallTo(() => _monitorService.SoloMonitorAsync("GSM59A4"))
+            .Invokes(() =>
+            {
+                callCount++;
+                if (callCount < 3)
+                    throw new InvalidOperationException("SetDisplayConfig failed");
+            });
+
+        var service = CreateService(
+            new Dictionary<string, ModeConfig> { ["retry"] = new() { SoloMonitor = "GSM59A4" } },
+            displayActionDelayMs: 1);
+
+        await service.ApplyModeAsync("retry");
+
+        callCount.ShouldBe(3);
+    }
+
+    [Fact]
+    public async Task ApplyModeAsync_AllRetriesExhausted_Throws()
+    {
+        A.CallTo(() => _monitorService.SoloMonitorAsync(A<string>._))
+            .Throws(new InvalidOperationException("permanent failure"));
+
+        var service = CreateService(
+            new Dictionary<string, ModeConfig> { ["fail"] = new() { SoloMonitor = "GSM59A4" } },
+            displayActionDelayMs: 1);
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => service.ApplyModeAsync("fail"));
+        ex.Message.ShouldBe("permanent failure");
+
+        A.CallTo(() => _monitorService.SoloMonitorAsync("GSM59A4"))
+            .MustHaveHappened(5, Times.Exactly);
+    }
+
+    [Fact]
+    public async Task ApplyModeAsync_DelayZero_NoRetry()
+    {
+        A.CallTo(() => _monitorService.SoloMonitorAsync(A<string>._))
+            .Throws(new InvalidOperationException("fail"));
+
+        var service = CreateService(
+            new Dictionary<string, ModeConfig> { ["no-retry"] = new() { SoloMonitor = "GSM59A4" } },
+            displayActionDelayMs: 0);
+
+        await Should.ThrowAsync<InvalidOperationException>(
+            () => service.ApplyModeAsync("no-retry"));
 
         A.CallTo(() => _monitorService.SoloMonitorAsync("GSM59A4"))
             .MustHaveHappenedOnceExactly();

@@ -16,10 +16,16 @@ public class WindowsMonitorServiceTests
     private readonly IDisplayConfigApi _api = A.Fake<IDisplayConfigApi>();
     private readonly ILogger<WindowsMonitorService> _logger = A.Fake<ILogger<WindowsMonitorService>>();
 
-    private static IOptionsMonitor<PcRemoteOptions> MakeOptions(DisplaySwitchingMode mode = DisplaySwitchingMode.Direct)
+    private static IOptionsMonitor<PcRemoteOptions> MakeOptions(
+        DisplaySwitchingMode mode = DisplaySwitchingMode.Direct,
+        bool useSavedLayout = true)
     {
         var options = A.Fake<IOptionsMonitor<PcRemoteOptions>>();
-        A.CallTo(() => options.CurrentValue).Returns(new PcRemoteOptions { DisplaySwitching = mode });
+        A.CallTo(() => options.CurrentValue).Returns(new PcRemoteOptions
+        {
+            DisplaySwitching = mode,
+            UseSavedLayout = useSavedLayout
+        });
         return options;
     }
 
@@ -276,7 +282,8 @@ public class WindowsMonitorServiceTests
         await service.GetMonitorsAsync();
         await service.GetMonitorsAsync();
 
-        A.CallTo(() => _api.QueryConfig(A<QueryDisplayConfigFlags>._)).MustHaveHappenedOnceExactly();
+        // Each QueryMonitors call issues QDC_ALL_PATHS + QDC_DATABASE_CURRENT; cache means only one QueryMonitors call
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS)).MustHaveHappenedOnceExactly();
     }
 
     [Fact]
@@ -289,7 +296,8 @@ public class WindowsMonitorServiceTests
         service.InvalidateCache();
         await service.GetMonitorsAsync();
 
-        A.CallTo(() => _api.QueryConfig(A<QueryDisplayConfigFlags>._)).MustHaveHappened(2, Times.Exactly);
+        // Two QueryMonitors calls → two QDC_ALL_PATHS calls
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS)).MustHaveHappened(2, Times.Exactly);
     }
 
     [Fact]
@@ -549,10 +557,10 @@ public class WindowsMonitorServiceTests
     }
 
     [Fact]
-    public async Task SoloMonitorAsync_InvalidatesModeIndexesOnTargetPath()
+    public async Task SoloMonitorAsync_UseSavedLayoutFalse_InvalidatesModeIndexesOnTargetPath()
     {
         SetupTwoMonitorConfig();
-        var service = CreateService();
+        var service = CreateServiceWithSavedLayout(false);
 
         DISPLAYCONFIG_PATH_INFO[]? appliedPaths = null;
         A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
@@ -1099,5 +1107,333 @@ public class WindowsMonitorServiceTests
 
         A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
             .MustHaveHappenedOnceExactly();
+    }
+
+    // ── UseSavedLayout tests ─────────────────────────────────────────
+
+    private WindowsMonitorService CreateServiceWithSavedLayout(bool useSavedLayout)
+        => new(_api, _logger, MakeOptions(useSavedLayout: useSavedLayout));
+
+    /// <summary>
+    /// Sets up one active + one inactive monitor using standard EDID values.
+    /// Returns the inactive monitor's enable-config paths/modes for use with QDC_DATABASE_CURRENT or QDC_ALL_PATHS.
+    /// Inactive monitor ID = "DEL4321" (targetId 20).
+    /// </summary>
+    private (DISPLAYCONFIG_PATH_INFO[], DISPLAYCONFIG_MODE_INFO[]) SetupSavedLayoutMocks()
+    {
+        SetupOneActiveOneInactive();
+
+        var enablePaths = new[] { MakeInactivePath(Adapter1, 20, 1) };
+        var enableModes = Array.Empty<DISPLAYCONFIG_MODE_INFO>();
+        return (enablePaths, enableModes);
+    }
+
+    [Fact]
+    public async Task EnableMonitor_UseSavedLayout_QueriesDatabaseCurrentFirst()
+    {
+        var service = CreateServiceWithSavedLayout(true);
+        var (paths, modes) = SetupSavedLayoutMocks();
+
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT))
+            .Returns((paths, modes));
+
+        await service.EnableMonitorAsync("DEL4321");
+
+        // Called once during HasSavedLayout probe (QueryMonitors) and once in BuildEnableConfig
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT))
+            .MustHaveHappened(2, Times.Exactly);
+    }
+
+    [Fact]
+    public async Task EnableMonitor_UseSavedLayout_FallsBackOnError87()
+    {
+        var service = CreateServiceWithSavedLayout(true);
+        var (paths, modes) = SetupSavedLayoutMocks();
+
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT))
+            .Throws(new Win32Exception(87));
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS))
+            .Returns((paths, modes));
+
+        await service.EnableMonitorAsync("DEL4321");
+
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS))
+            .MustHaveHappened();
+    }
+
+    [Fact]
+    public async Task EnableMonitor_UseSavedLayoutFalse_UsesDatabaseCurrentOnlyForProbe()
+    {
+        var service = CreateServiceWithSavedLayout(false);
+        var (paths, modes) = SetupSavedLayoutMocks();
+
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS))
+            .Returns((paths, modes));
+
+        await service.EnableMonitorAsync("DEL4321");
+
+        // QDC_DATABASE_CURRENT is called once from the HasSavedLayout probe, but not from BuildEnableConfig
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT))
+            .MustHaveHappenedOnceExactly();
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS))
+            .MustHaveHappened();
+    }
+
+    [Fact]
+    public async Task EnableMonitor_UseSavedLayout_PreservesModeIndexes()
+    {
+        var service = CreateServiceWithSavedLayout(true);
+
+        // QDC_ALL_PATHS for GetMonitorsAsync (inactive DEL4321)
+        var allPaths = new[]
+        {
+            MakeActivePath(Adapter1, targetId: 10, sourceId: 0, sourceModeIdx: 0, targetModeIdx: 1),
+            MakeInactivePath(Adapter1, targetId: 20, sourceId: 1),
+        };
+        var allModes = new[]
+        {
+            MakeSourceMode(Adapter1, 0, 3840, 2160, 0, 0),
+            MakeTargetMode(Adapter1, 10, 120000, 1000),
+        };
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS)).Returns((allPaths, allModes));
+
+        // QDC_DATABASE_CURRENT returns DEL4321 with non-INVALID mode indexes
+        var dbPaths = new[]
+        {
+            MakeActivePath(Adapter1, targetId: 20, sourceId: 1, sourceModeIdx: 5, targetModeIdx: 6),
+        };
+        var dbModes = Array.Empty<DISPLAYCONFIG_MODE_INFO>();
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT)).Returns((dbPaths, dbModes));
+
+        A.CallTo(() => _api.GetTargetDeviceInfo(Adapter1, 10)).Returns(("LG ULTRAGEAR", (ushort)0x6D1E, (ushort)0x59A4));
+        A.CallTo(() => _api.GetTargetDeviceInfo(Adapter1, 20)).Returns(("Dell U2723QE", (ushort)0xAC10, (ushort)0x4321));
+        A.CallTo(() => _api.GetSourceGdiName(Adapter1, 0)).Returns(@"\\.\DISPLAY1");
+
+        DISPLAYCONFIG_PATH_INFO[]? appliedPaths = null;
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .Invokes((DISPLAYCONFIG_PATH_INFO[] p, DISPLAYCONFIG_MODE_INFO[] _, SetDisplayConfigFlags _) => appliedPaths = p);
+
+        await service.EnableMonitorAsync("DEL4321");
+
+        var targetPath = appliedPaths!.First(p => p.targetInfo.id == 20);
+        targetPath.sourceInfo.modeInfoIdx.ShouldNotBe(DISPLAYCONFIG_PATH_MODE_IDX_INVALID);
+        targetPath.targetInfo.modeInfoIdx.ShouldNotBe(DISPLAYCONFIG_PATH_MODE_IDX_INVALID);
+        targetPath.sourceInfo.modeInfoIdx.ShouldBe(5u);
+        targetPath.targetInfo.modeInfoIdx.ShouldBe(6u);
+    }
+
+    [Fact]
+    public async Task EnableMonitor_UseSavedLayout_FallbackClearsModeIndexes()
+    {
+        var service = CreateServiceWithSavedLayout(true);
+
+        // QDC_DATABASE_CURRENT throws error 87 — fallback to QDC_ALL_PATHS
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT))
+            .Throws(new Win32Exception(ERROR_INVALID_PARAMETER));
+
+        var paths = new[]
+        {
+            MakeActivePath(Adapter1, targetId: 10, sourceId: 0, sourceModeIdx: 0, targetModeIdx: 1),
+            MakeInactivePath(Adapter1, targetId: 20, sourceId: 1),
+        };
+        var modes = new[]
+        {
+            MakeSourceMode(Adapter1, 0, 3840, 2160, 0, 0),
+            MakeTargetMode(Adapter1, 10, 120000, 1000),
+        };
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS)).Returns((paths, modes));
+
+        A.CallTo(() => _api.GetTargetDeviceInfo(Adapter1, 10)).Returns(("LG ULTRAGEAR", (ushort)0x6D1E, (ushort)0x59A4));
+        A.CallTo(() => _api.GetTargetDeviceInfo(Adapter1, 20)).Returns(("Dell U2723QE", (ushort)0xAC10, (ushort)0x4321));
+        A.CallTo(() => _api.GetSourceGdiName(Adapter1, 0)).Returns(@"\\.\DISPLAY1");
+
+        DISPLAYCONFIG_PATH_INFO[]? appliedPaths = null;
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .Invokes((DISPLAYCONFIG_PATH_INFO[] p, DISPLAYCONFIG_MODE_INFO[] _, SetDisplayConfigFlags _) => appliedPaths = p);
+
+        await service.EnableMonitorAsync("DEL4321");
+
+        var targetPath = appliedPaths!.First(p => p.targetInfo.id == 20);
+        targetPath.sourceInfo.modeInfoIdx.ShouldBe(DISPLAYCONFIG_PATH_MODE_IDX_INVALID);
+        targetPath.targetInfo.modeInfoIdx.ShouldBe(DISPLAYCONFIG_PATH_MODE_IDX_INVALID);
+    }
+
+    [Fact]
+    public async Task SoloMonitor_UseSavedLayout_PreservesTargetModeIndexes()
+    {
+        var service = CreateServiceWithSavedLayout(true);
+
+        // QDC_ALL_PATHS for GetMonitorsAsync
+        var allPaths = new[]
+        {
+            MakeActivePath(Adapter1, targetId: 10, sourceId: 0, sourceModeIdx: 0, targetModeIdx: 1),
+            MakeActivePath(Adapter1, targetId: 20, sourceId: 1, sourceModeIdx: 2, targetModeIdx: 3),
+        };
+        var allModes = new[]
+        {
+            MakeSourceMode(Adapter1, 0, 3840, 2160, 0, 0),
+            MakeTargetMode(Adapter1, 10, 144000, 1000),
+            MakeSourceMode(Adapter1, 1, 2560, 1440, 3840, 0),
+            MakeTargetMode(Adapter1, 20, 60000, 1000),
+        };
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS)).Returns((allPaths, allModes));
+
+        // QDC_DATABASE_CURRENT returns DEL4321 with non-INVALID mode indexes
+        var dbPaths = new[]
+        {
+            MakeActivePath(Adapter1, targetId: 10, sourceId: 0, sourceModeIdx: 0, targetModeIdx: 1),
+            MakeActivePath(Adapter1, targetId: 20, sourceId: 1, sourceModeIdx: 7, targetModeIdx: 8),
+        };
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT))
+            .Returns((dbPaths, Array.Empty<DISPLAYCONFIG_MODE_INFO>()));
+
+        A.CallTo(() => _api.GetTargetDeviceInfo(Adapter1, 10)).Returns(("LG ULTRAGEAR", (ushort)0x6D1E, (ushort)0x59A4));
+        A.CallTo(() => _api.GetTargetDeviceInfo(Adapter1, 20)).Returns(("Dell U2723QE", (ushort)0xAC10, (ushort)0x4321));
+        A.CallTo(() => _api.GetSourceGdiName(Adapter1, 0)).Returns(@"\\.\DISPLAY1");
+        A.CallTo(() => _api.GetSourceGdiName(Adapter1, 1)).Returns(@"\\.\DISPLAY2");
+
+        DISPLAYCONFIG_PATH_INFO[]? appliedPaths = null;
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .Invokes((DISPLAYCONFIG_PATH_INFO[] p, DISPLAYCONFIG_MODE_INFO[] _, SetDisplayConfigFlags _) => appliedPaths = p);
+
+        await service.SoloMonitorAsync("DEL4321");
+
+        var targetPath = appliedPaths!.First(p => p.targetInfo.id == 20);
+        targetPath.sourceInfo.modeInfoIdx.ShouldBe(7u);
+        targetPath.targetInfo.modeInfoIdx.ShouldBe(8u);
+    }
+
+    [Fact]
+    public async Task SoloMonitor_UseSavedLayout_AlwaysClearsDeactivatedPathModeIndexes()
+    {
+        var service = CreateServiceWithSavedLayout(true);
+
+        // QDC_ALL_PATHS for GetMonitorsAsync
+        var allPaths = new[]
+        {
+            MakeActivePath(Adapter1, targetId: 10, sourceId: 0, sourceModeIdx: 0, targetModeIdx: 1),
+            MakeActivePath(Adapter1, targetId: 20, sourceId: 1, sourceModeIdx: 2, targetModeIdx: 3),
+        };
+        var allModes = new[]
+        {
+            MakeSourceMode(Adapter1, 0, 3840, 2160, 0, 0),
+            MakeTargetMode(Adapter1, 10, 144000, 1000),
+            MakeSourceMode(Adapter1, 1, 2560, 1440, 3840, 0),
+            MakeTargetMode(Adapter1, 20, 60000, 1000),
+        };
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS)).Returns((allPaths, allModes));
+
+        // QDC_DATABASE_CURRENT — both paths have valid mode indexes
+        var dbPaths = new[]
+        {
+            MakeActivePath(Adapter1, targetId: 10, sourceId: 0, sourceModeIdx: 4, targetModeIdx: 5),
+            MakeActivePath(Adapter1, targetId: 20, sourceId: 1, sourceModeIdx: 7, targetModeIdx: 8),
+        };
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT))
+            .Returns((dbPaths, Array.Empty<DISPLAYCONFIG_MODE_INFO>()));
+
+        A.CallTo(() => _api.GetTargetDeviceInfo(Adapter1, 10)).Returns(("LG ULTRAGEAR", (ushort)0x6D1E, (ushort)0x59A4));
+        A.CallTo(() => _api.GetTargetDeviceInfo(Adapter1, 20)).Returns(("Dell U2723QE", (ushort)0xAC10, (ushort)0x4321));
+        A.CallTo(() => _api.GetSourceGdiName(Adapter1, 0)).Returns(@"\\.\DISPLAY1");
+        A.CallTo(() => _api.GetSourceGdiName(Adapter1, 1)).Returns(@"\\.\DISPLAY2");
+
+        DISPLAYCONFIG_PATH_INFO[]? appliedPaths = null;
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .Invokes((DISPLAYCONFIG_PATH_INFO[] p, DISPLAYCONFIG_MODE_INFO[] _, SetDisplayConfigFlags _) => appliedPaths = p);
+
+        await service.SoloMonitorAsync("DEL4321");
+
+        // Deactivated path (GSM59A4, targetId 10) must have INVALID indexes
+        var deactivatedPath = appliedPaths!.First(p => p.targetInfo.id == 10);
+        deactivatedPath.sourceInfo.modeInfoIdx.ShouldBe(DISPLAYCONFIG_PATH_MODE_IDX_INVALID);
+        deactivatedPath.targetInfo.modeInfoIdx.ShouldBe(DISPLAYCONFIG_PATH_MODE_IDX_INVALID);
+    }
+
+    [Fact]
+    public async Task SoloMonitor_AllPaths_ClearsAllModeIndexes()
+    {
+        var service = CreateServiceWithSavedLayout(false);
+
+        // QDC_ALL_PATHS for both GetMonitorsAsync and BuildSoloConfig
+        var paths = new[]
+        {
+            MakeActivePath(Adapter1, targetId: 10, sourceId: 0, sourceModeIdx: 0, targetModeIdx: 1),
+            MakeActivePath(Adapter1, targetId: 20, sourceId: 1, sourceModeIdx: 2, targetModeIdx: 3),
+        };
+        var modes = new[]
+        {
+            MakeSourceMode(Adapter1, 0, 3840, 2160, 0, 0),
+            MakeTargetMode(Adapter1, 10, 144000, 1000),
+            MakeSourceMode(Adapter1, 1, 2560, 1440, 3840, 0),
+            MakeTargetMode(Adapter1, 20, 60000, 1000),
+        };
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS)).Returns((paths, modes));
+
+        A.CallTo(() => _api.GetTargetDeviceInfo(Adapter1, 10)).Returns(("LG ULTRAGEAR", (ushort)0x6D1E, (ushort)0x59A4));
+        A.CallTo(() => _api.GetTargetDeviceInfo(Adapter1, 20)).Returns(("Dell U2723QE", (ushort)0xAC10, (ushort)0x4321));
+        A.CallTo(() => _api.GetSourceGdiName(Adapter1, 0)).Returns(@"\\.\DISPLAY1");
+        A.CallTo(() => _api.GetSourceGdiName(Adapter1, 1)).Returns(@"\\.\DISPLAY2");
+
+        DISPLAYCONFIG_PATH_INFO[]? appliedPaths = null;
+        A.CallTo(() => _api.ApplyConfig(A<DISPLAYCONFIG_PATH_INFO[]>._, A<DISPLAYCONFIG_MODE_INFO[]>._, A<SetDisplayConfigFlags>._))
+            .Invokes((DISPLAYCONFIG_PATH_INFO[] p, DISPLAYCONFIG_MODE_INFO[] _, SetDisplayConfigFlags _) => appliedPaths = p);
+
+        await service.SoloMonitorAsync("DEL4321");
+
+        // With UseSavedLayout=false, all paths (target and inactive) must have INVALID indexes
+        var targetPath = appliedPaths!.First(p => p.targetInfo.id == 20);
+        var otherPath = appliedPaths!.First(p => p.targetInfo.id == 10);
+        targetPath.sourceInfo.modeInfoIdx.ShouldBe(DISPLAYCONFIG_PATH_MODE_IDX_INVALID);
+        targetPath.targetInfo.modeInfoIdx.ShouldBe(DISPLAYCONFIG_PATH_MODE_IDX_INVALID);
+        otherPath.sourceInfo.modeInfoIdx.ShouldBe(DISPLAYCONFIG_PATH_MODE_IDX_INVALID);
+        otherPath.targetInfo.modeInfoIdx.ShouldBe(DISPLAYCONFIG_PATH_MODE_IDX_INVALID);
+    }
+
+    // ── HasSavedLayout ───────────────────────────────────────────────
+
+    [Fact]
+    public void QueryMonitors_HasSavedLayout_TrueWhenPresentInDatabaseCurrent()
+    {
+        SetupTwoMonitorConfig();
+        var service = CreateService();
+
+        // QDC_DATABASE_CURRENT returns a path for targetId 10 (GSM59A4) only
+        var dbPaths = new[] { MakeActivePath(Adapter1, targetId: 10, sourceId: 0, sourceModeIdx: 0, targetModeIdx: 1) };
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT))
+            .Returns((dbPaths, Array.Empty<DISPLAYCONFIG_MODE_INFO>()));
+
+        var monitors = service.QueryMonitors();
+
+        monitors.First(m => m.MonitorId == "GSM59A4").HasSavedLayout.ShouldBeTrue();
+        monitors.First(m => m.MonitorId == "DEL4321").HasSavedLayout.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void QueryMonitors_HasSavedLayout_FalseWhenDatabaseCurrentThrowsError87()
+    {
+        SetupTwoMonitorConfig();
+        var service = CreateService();
+
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT))
+            .Throws(new Win32Exception(ERROR_INVALID_PARAMETER));
+
+        var monitors = service.QueryMonitors();
+
+        monitors.ShouldAllBe(m => !m.HasSavedLayout);
+    }
+
+    [Fact]
+    public void QueryMonitors_HasSavedLayout_FalseWhenNotInDatabaseCurrent()
+    {
+        SetupTwoMonitorConfig();
+        var service = CreateService();
+
+        // QDC_DATABASE_CURRENT returns empty — no saved layout for any monitor
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT))
+            .Returns((Array.Empty<DISPLAYCONFIG_PATH_INFO>(), Array.Empty<DISPLAYCONFIG_MODE_INFO>()));
+
+        var monitors = service.QueryMonitors();
+
+        monitors.ShouldAllBe(m => !m.HasSavedLayout);
     }
 }

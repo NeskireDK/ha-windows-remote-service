@@ -13,6 +13,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Logging — console (captured by journalctl) + file
 builder.Logging.ClearProviders();
+builder.Logging.SetMinimumLevel(LogLevel.Trace); // pass everything through; custom providers filter by their own MinimumLevel
 builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 builder.Logging.AddConsole();
 builder.Logging.AddProvider(new FileLoggerProvider(ConfigPaths.GetLogFilePath()));
