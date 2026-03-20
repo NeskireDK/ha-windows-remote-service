@@ -94,6 +94,12 @@ public class UpdateServiceTests
     [InlineData("v2.0.0-beta.2", 2, 0, 0, 2)]
     [InlineData("v1.7.0-alpha", 1, 7, 0, 0)]
     [InlineData("v1.2", 1, 2, 0, int.MaxValue)]
+    [InlineData("v1.7.1-rc1", 1, 7, 1, 1)]
+    [InlineData("v1.7.1-rc2", 1, 7, 1, 2)]
+    [InlineData("1.7.1-rc3", 1, 7, 1, 3)]
+    [InlineData("v2.0.0-beta2", 2, 0, 0, 2)]
+    [InlineData("v1.7.1-rc.0", 1, 7, 1, 0)]
+    [InlineData("v1.7.1-rc0", 1, 7, 1, 0)]
     public void ParseVersion_ParsesCorrectly(string tag, int major, int minor, int patch, int revision)
     {
         var v = UpdateService.ParseVersion(tag);
@@ -131,6 +137,17 @@ public class UpdateServiceTests
         rc4.ShouldNotBeNull();
         rc3.ShouldNotBeNull();
         rc4.ShouldBeGreaterThan(rc3);
+    }
+
+    [Fact]
+    public void ParseVersion_DotlessRcOrdering()
+    {
+        var rc2 = UpdateService.ParseVersion("v1.7.1-rc2");
+        var rc1 = UpdateService.ParseVersion("v1.7.1-rc1");
+
+        rc2.ShouldNotBeNull();
+        rc1.ShouldNotBeNull();
+        rc2.ShouldBeGreaterThan(rc1);
     }
 
     // ── ParseVersion via CheckAndApplyAsync ───────────────────────────
