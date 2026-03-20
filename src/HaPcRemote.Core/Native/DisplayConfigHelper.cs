@@ -18,14 +18,14 @@ internal sealed class DisplayConfigHelper(ILogger<DisplayConfigHelper> logger) :
         DISPLAYCONFIG_PATH_INFO[] paths;
         DISPLAYCONFIG_MODE_INFO[] modes;
 
-        logger.LogDebug("QueryConfig: flags={Flags}", flags);
+        logger.LogTrace("QueryConfig: flags={Flags}", flags);
 
         for (var attempt = 0; attempt < 3; attempt++)
         {
             status = GetDisplayConfigBufferSizes(flags, out var pathCount, out var modeCount);
             ThrowOnError(status, nameof(GetDisplayConfigBufferSizes));
 
-            logger.LogDebug("QueryConfig: buffers allocated — {Paths} paths, {Modes} modes", pathCount, modeCount);
+            logger.LogTrace("QueryConfig: buffers allocated — {Paths} paths, {Modes} modes", pathCount, modeCount);
 
             paths = new DISPLAYCONFIG_PATH_INFO[pathCount];
             modes = new DISPLAYCONFIG_MODE_INFO[modeCount];
@@ -34,7 +34,7 @@ internal sealed class DisplayConfigHelper(ILogger<DisplayConfigHelper> logger) :
 
             if (status == ERROR_INSUFFICIENT_BUFFER)
             {
-                logger.LogDebug("QueryConfig: buffer too small on attempt {Attempt}, retrying", attempt + 1);
+                logger.LogTrace("QueryConfig: buffer too small on attempt {Attempt}, retrying", attempt + 1);
                 continue;
             }
 
@@ -45,7 +45,7 @@ internal sealed class DisplayConfigHelper(ILogger<DisplayConfigHelper> logger) :
             if (modeCount < modes.Length)
                 Array.Resize(ref modes, modeCount);
 
-            logger.LogDebug("QueryConfig: returned {Paths} paths, {Modes} modes", paths.Length, modes.Length);
+            logger.LogTrace("QueryConfig: returned {Paths} paths, {Modes} modes", paths.Length, modes.Length);
             return (paths, modes);
         }
 
@@ -61,7 +61,7 @@ internal sealed class DisplayConfigHelper(ILogger<DisplayConfigHelper> logger) :
         {
             var p = paths[i];
             var active = (p.flags & DISPLAYCONFIG_PATH_FLAGS.ACTIVE) != 0;
-            logger.LogDebug(
+            logger.LogTrace(
                 "  Path[{I}]: adapter=({Lo},{Hi}) source={Src} target={Tgt} active={Active} srcMode={SrcIdx} tgtMode={TgtIdx}",
                 i, p.sourceInfo.adapterId.LowPart, p.sourceInfo.adapterId.HighPart,
                 p.sourceInfo.id, p.targetInfo.id, active,
@@ -73,14 +73,14 @@ internal sealed class DisplayConfigHelper(ILogger<DisplayConfigHelper> logger) :
             var m = modes[i];
             if (m.infoType == DISPLAYCONFIG_MODE_INFO_TYPE.SOURCE)
             {
-                logger.LogDebug(
+                logger.LogTrace(
                     "  Mode[{I}]: SOURCE {W}x{H} pos=({X},{Y})",
                     i, m.info.sourceMode.width, m.info.sourceMode.height,
                     m.info.sourceMode.position.x, m.info.sourceMode.position.y);
             }
             else if (m.infoType == DISPLAYCONFIG_MODE_INFO_TYPE.TARGET)
             {
-                logger.LogDebug(
+                logger.LogTrace(
                     "  Mode[{I}]: TARGET vSync={Hz}Hz",
                     i, m.info.targetMode.targetVideoSignalInfo.vSyncFreq.ToHz());
             }
@@ -103,7 +103,7 @@ internal sealed class DisplayConfigHelper(ILogger<DisplayConfigHelper> logger) :
 
         var friendly = deviceName.monitorFriendlyDeviceName ?? "";
         var path = deviceName.monitorDevicePath ?? "";
-        logger.LogDebug(
+        logger.LogTrace(
             "GetTargetDeviceInfo: target={TargetId} friendly=\"{Friendly}\" edid={Mfg:X4}:{Prod:X4} connector={Conn} devicePath=\"{Path}\"",
             targetId, friendly, deviceName.edidManufactureId, deviceName.edidProductCodeId,
             deviceName.connectorInstance, path);
@@ -123,7 +123,7 @@ internal sealed class DisplayConfigHelper(ILogger<DisplayConfigHelper> logger) :
         ThrowOnError(status, nameof(DisplayConfigGetDeviceInfo));
 
         var gdiName = sourceName.viewGdiDeviceName ?? "";
-        logger.LogDebug("GetSourceGdiName: source={SourceId} gdi=\"{GdiName}\"", sourceId, gdiName);
+        logger.LogTrace("GetSourceGdiName: source={SourceId} gdi=\"{GdiName}\"", sourceId, gdiName);
         return gdiName;
     }
 

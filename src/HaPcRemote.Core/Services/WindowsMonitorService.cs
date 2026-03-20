@@ -68,11 +68,14 @@ internal sealed class WindowsMonitorService : IMonitorService
 
         _logger.LogDebug("QueryMonitors: processing {Count} paths", paths.Length);
 
+        var unavailableCount = 0;
+        var duplicateCount = 0;
+
         foreach (var path in paths)
         {
             if (path.targetInfo.targetAvailable == 0)
             {
-                _logger.LogDebug("  Skipping unavailable target {TargetId}", path.targetInfo.id);
+                unavailableCount++;
                 continue;
             }
 
@@ -97,7 +100,7 @@ internal sealed class WindowsMonitorService : IMonitorService
                 }
                 else
                 {
-                    _logger.LogDebug("  Skipping duplicate target {TargetId} (active={Active})", path.targetInfo.id, isActive);
+                    duplicateCount++;
                     continue;
                 }
             }
@@ -171,6 +174,7 @@ internal sealed class WindowsMonitorService : IMonitorService
             });
         }
 
+        _logger.LogDebug("QueryMonitors: skipped {Unavailable} unavailable and {Duplicate} duplicate paths", unavailableCount, duplicateCount);
         _logger.LogDebug("QueryMonitors: found {Count} monitors", monitors.Count);
         foreach (var m in monitors)
             _logger.LogDebug("  {Id}: \"{Name}\" ({Gdi}) {W}x{H}@{Hz}Hz active={Active} primary={Primary}",
@@ -244,7 +248,18 @@ internal sealed class WindowsMonitorService : IMonitorService
     private (DISPLAYCONFIG_PATH_INFO[] Paths, DISPLAYCONFIG_MODE_INFO[] Modes) BuildEnableConfig(
         (LUID adapterId, uint targetId) targetKey)
     {
-        var (paths, modes) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT);
+        (DISPLAYCONFIG_PATH_INFO[] paths, DISPLAYCONFIG_MODE_INFO[] modes) config;
+        try
+        {
+            config = _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT);
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == ERROR_INVALID_PARAMETER)
+        {
+            _logger.LogDebug("QDC_DATABASE_CURRENT unavailable, falling back to QDC_ALL_PATHS");
+            config = _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS);
+        }
+
+        var (paths, modes) = config;
         var idx = FindPathIndex(paths, targetKey);
         paths[idx].flags |= DISPLAYCONFIG_PATH_FLAGS.ACTIVE;
         paths[idx].sourceInfo.modeInfoIdx = DISPLAYCONFIG_PATH_MODE_IDX_INVALID;
