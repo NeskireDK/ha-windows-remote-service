@@ -11,4 +11,5 @@ public sealed class MonitorInfo
     public required int DisplayFrequency { get; init; }
     public required bool IsActive { get; init; }
     public required bool IsPrimary { get; init; }
+    public bool HasSavedLayout { get; set; }
 }

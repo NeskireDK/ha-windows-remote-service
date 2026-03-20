@@ -282,7 +282,8 @@ public class WindowsMonitorServiceTests
         await service.GetMonitorsAsync();
         await service.GetMonitorsAsync();
 
-        A.CallTo(() => _api.QueryConfig(A<QueryDisplayConfigFlags>._)).MustHaveHappenedOnceExactly();
+        // Each QueryMonitors call issues QDC_ALL_PATHS + QDC_DATABASE_CURRENT; cache means only one QueryMonitors call
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS)).MustHaveHappenedOnceExactly();
     }
 
     [Fact]
@@ -295,7 +296,8 @@ public class WindowsMonitorServiceTests
         service.InvalidateCache();
         await service.GetMonitorsAsync();
 
-        A.CallTo(() => _api.QueryConfig(A<QueryDisplayConfigFlags>._)).MustHaveHappened(2, Times.Exactly);
+        // Two QueryMonitors calls → two QDC_ALL_PATHS calls
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS)).MustHaveHappened(2, Times.Exactly);
     }
 
     [Fact]
@@ -1137,8 +1139,9 @@ public class WindowsMonitorServiceTests
 
         await service.EnableMonitorAsync("DEL4321");
 
+        // Called once during HasSavedLayout probe (QueryMonitors) and once in BuildEnableConfig
         A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT))
-            .MustHaveHappenedOnceExactly();
+            .MustHaveHappened(2, Times.Exactly);
     }
 
     [Fact]
@@ -1159,7 +1162,7 @@ public class WindowsMonitorServiceTests
     }
 
     [Fact]
-    public async Task EnableMonitor_UseSavedLayoutFalse_SkipsDatabaseCurrent()
+    public async Task EnableMonitor_UseSavedLayoutFalse_UsesDatabaseCurrentOnlyForProbe()
     {
         var service = CreateServiceWithSavedLayout(false);
         var (paths, modes) = SetupSavedLayoutMocks();
@@ -1169,9 +1172,58 @@ public class WindowsMonitorServiceTests
 
         await service.EnableMonitorAsync("DEL4321");
 
+        // QDC_DATABASE_CURRENT is called once from the HasSavedLayout probe, but not from BuildEnableConfig
         A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT))
-            .MustNotHaveHappened();
+            .MustHaveHappenedOnceExactly();
         A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_ALL_PATHS))
             .MustHaveHappened();
+    }
+
+    // ── HasSavedLayout ───────────────────────────────────────────────
+
+    [Fact]
+    public void QueryMonitors_HasSavedLayout_TrueWhenPresentInDatabaseCurrent()
+    {
+        SetupTwoMonitorConfig();
+        var service = CreateService();
+
+        // QDC_DATABASE_CURRENT returns a path for targetId 10 (GSM59A4) only
+        var dbPaths = new[] { MakeActivePath(Adapter1, targetId: 10, sourceId: 0, sourceModeIdx: 0, targetModeIdx: 1) };
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT))
+            .Returns((dbPaths, Array.Empty<DISPLAYCONFIG_MODE_INFO>()));
+
+        var monitors = service.QueryMonitors();
+
+        monitors.First(m => m.MonitorId == "GSM59A4").HasSavedLayout.ShouldBeTrue();
+        monitors.First(m => m.MonitorId == "DEL4321").HasSavedLayout.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void QueryMonitors_HasSavedLayout_FalseWhenDatabaseCurrentThrowsError87()
+    {
+        SetupTwoMonitorConfig();
+        var service = CreateService();
+
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT))
+            .Throws(new Win32Exception(ERROR_INVALID_PARAMETER));
+
+        var monitors = service.QueryMonitors();
+
+        monitors.ShouldAllBe(m => !m.HasSavedLayout);
+    }
+
+    [Fact]
+    public void QueryMonitors_HasSavedLayout_FalseWhenNotInDatabaseCurrent()
+    {
+        SetupTwoMonitorConfig();
+        var service = CreateService();
+
+        // QDC_DATABASE_CURRENT returns empty — no saved layout for any monitor
+        A.CallTo(() => _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT))
+            .Returns((Array.Empty<DISPLAYCONFIG_PATH_INFO>(), Array.Empty<DISPLAYCONFIG_MODE_INFO>()));
+
+        var monitors = service.QueryMonitors();
+
+        monitors.ShouldAllBe(m => !m.HasSavedLayout);
     }
 }

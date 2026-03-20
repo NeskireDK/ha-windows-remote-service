@@ -180,6 +180,8 @@ internal sealed class WindowsMonitorService : IMonitorService
             _logger.LogDebug("  {Id}: \"{Name}\" ({Gdi}) {W}x{H}@{Hz}Hz active={Active} primary={Primary}",
                 m.MonitorId, m.MonitorName, m.Name, m.Width, m.Height, m.DisplayFrequency, m.IsActive, m.IsPrimary);
 
+        ProbeSavedLayouts(monitors);
+
         return monitors;
     }
 
@@ -564,6 +566,34 @@ internal sealed class WindowsMonitorService : IMonitorService
     {
         InvalidateCache();
         return QueryMonitors();
+    }
+
+    // ── Saved layout probe ─────────────────────────────────────────────
+
+    private void ProbeSavedLayouts(List<MonitorInfo> monitors)
+    {
+        try
+        {
+            var (dbPaths, _) = _api.QueryConfig(QueryDisplayConfigFlags.QDC_DATABASE_CURRENT);
+            var savedKeys = new HashSet<(LUID adapterId, uint targetId)>(
+                dbPaths.Select(p => (p.targetInfo.adapterId, p.targetInfo.id)));
+
+            for (var i = 0; i < monitors.Count; i++)
+            {
+                if (!_targetKeys.TryGetValue(monitors[i].MonitorId, out var key))
+                    continue;
+                if (savedKeys.Contains(key))
+                    monitors[i].HasSavedLayout = true;
+            }
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == ERROR_INVALID_PARAMETER)
+        {
+            _logger.LogDebug("QDC_DATABASE_CURRENT unavailable — no saved layouts");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ProbeSavedLayouts: unexpected error, HasSavedLayout will be false");
+        }
     }
 
     // ── Helpers ────────────────────────────────────────────────────────
