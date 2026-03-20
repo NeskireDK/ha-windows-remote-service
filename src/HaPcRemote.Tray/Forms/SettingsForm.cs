@@ -16,6 +16,7 @@ internal sealed class SettingsForm : Form
     private readonly GamesTab _gamesTab;
     private readonly PowerTab _powerTab;
     private readonly LogTab _logTab;
+    private readonly DiagnosticsTab _diagnosticsTab;
     private readonly TabFooter _footer;
 
     public SettingsForm(
@@ -51,12 +52,14 @@ internal sealed class SettingsForm : Form
         _gamesTab = new GamesTab(services);
         _powerTab = new PowerTab(services);
         _logTab = new LogTab(logProvider, port);
+        _diagnosticsTab = new DiagnosticsTab(services);
 
         _tabControl.TabPages.Add(_generalTab);
         _tabControl.TabPages.Add(_modesTab);
         _tabControl.TabPages.Add(_gamesTab);
         _tabControl.TabPages.Add(_powerTab);
         _tabControl.TabPages.Add(_logTab);
+        _tabControl.TabPages.Add(_diagnosticsTab);
 
         // Shared footer — buttons swap when the selected tab changes
         _footer = new TabFooter();
